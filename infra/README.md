@@ -1,33 +1,33 @@
-# Infraestrutura
+# Infrastructure
 
-## Ambiente local
+## Local environment
 
 ```sh
-uv run python infra/compose/init_env.py          # gera infra/compose/.env (credenciais locais)
+uv run python infra/compose/init_env.py          # generates infra/compose/.env (local credentials)
 docker compose -f infra/compose/docker-compose.yml up -d
 ```
 
-| Serviço | Endereço | Observação |
+| Service | Address | Notes |
 |---|---|---|
-| PostgreSQL 17 | `127.0.0.1:5432` | Bancos `cap` (Control Plane) e `keycloak`. Use `127.0.0.1`, não `localhost`: no Windows o driver trava tentando IPv6 |
-| Valkey | `127.0.0.1:6379` | Sessões do BFF |
-| OpenBao (dev) | `http://127.0.0.1:8200` | Transit com a chave `cap-session` |
-| Keycloak | `http://localhost:8080/idp` | Realm `cap`, aplicado pelo serviço `keycloak-config` |
-| Mailpit | `http://localhost:8025` | Todos os e-mails enviados ficam aqui |
+| PostgreSQL 17 | `127.0.0.1:5432` | Databases `cap` (Control Plane) and `keycloak`. Use `127.0.0.1`, not `localhost`: on Windows the driver hangs trying IPv6 |
+| Valkey | `127.0.0.1:6379` | BFF sessions |
+| OpenBao (dev) | `http://127.0.0.1:8200` | Transit with the `cap-session` key |
+| Keycloak | `http://localhost:8080/idp` | Realm `cap`, applied by the `keycloak-config` service |
+| Mailpit | `http://localhost:8025` | Every e-mail sent ends up here |
 
-Primeiro acesso: o provisionamento cria só o **Super Administrador** inicial, que convida as
-organizações pela plataforma (spec 001, §4.8). Localmente:
+First access: provisioning creates only the initial **Super Administrator**, who invites
+organizations through the platform (spec 001, §4.8). Locally:
 
 ```sh
 cd services/control-plane
 CAP_ENV_FILE=../../infra/compose/.env.control-plane uv run cap-admin bootstrap-super-admin \
-  --email voce@exemplo.com.br --name "Seu Nome"   # o link de ativação chega no Mailpit
+  --email you@example.com --name "Your Name"   # the activation link arrives in Mailpit
 ```
 
-## Imagens (T073)
+## Images (T073)
 
-Contexto de build é a raiz do repositório; o `.dockerignore` deixa de fora `.env*`,
-`DevNotes.MD` e artefatos locais.
+The build context is the repository root; `.dockerignore` excludes `.env*`,
+`DevNotes.MD` and local artifacts.
 
 ```sh
 docker build -f services/control-plane/Dockerfile -t cap-control-plane .   # API, cap-worker, cap-admin, alembic
@@ -35,46 +35,50 @@ docker build -f apps/studio/Dockerfile -t cap-studio .                     # Nex
 docker build -t cap-keycloak infra/keycloak
 ```
 
-O CI constrói as três e roda o Trivy: falha com vulnerabilidade alta ou crítica que tenha
-correção, salvo mitigação registrada em `.trivyignore.yaml` (justificativa, caminho e data
-de validade). O job E2E usa essas mesmas imagens e varre os logs com
+CI builds all three and runs Trivy: it fails on any high or critical vulnerability that has
+a fix, unless a mitigation is recorded in `.trivyignore.yaml` (justification, path and
+expiry date). The E2E job uses these same images and scans the logs with
 `infra/ci/scan_logs_for_secrets.py` (CS-007).
 
 ## Keycloak
 
-- `keycloak/Dockerfile`: imagem fixada por digest; extensão de código por e-mail compilada
-  a partir de commit fixado com o patch do achado A15; lista de senhas vazadas com checksum.
-  Detalhes e procedência em `keycloak/providers.lock`.
-- `keycloak/realm/cap-realm.yaml`: configuração do realm (keycloak-config-cli). A
-  substituição de variáveis do keycloak-config-cli vale até em comentários.
-- `keycloak/themes/cap/`: telas de login e e-mails em PT-BR com a identidade da marca.
+- `keycloak/Dockerfile`: image pinned by digest; e-mail code extension built from a pinned
+  commit with the patch for finding A15; breached-password list with checksum.
+  Details and provenance in `keycloak/providers.lock`.
+- `keycloak/realm/cap-realm.yaml`: realm configuration (keycloak-config-cli).
+  keycloak-config-cli variable substitution applies even inside comments.
+- `keycloak/themes/cap/`: login screens and e-mails in Brazilian Portuguese with the brand
+  identity.
 
-## Alerta de tentativa de alterar o Audit Trail
+## Alert on attempts to modify the Audit Trail
 
-`audit.audit_event` só aceita inserções (specs/001-identity-access, data-model.md). Qualquer
-`UPDATE`, `DELETE` ou `TRUNCATE` é recusado:
+`audit.audit_event` accepts inserts only (specs/001-identity-access, data-model.md). Any
+`UPDATE`, `DELETE` or `TRUNCATE` is rejected:
 
-- pelo papel da aplicação (`cap_app`), por falta de privilégio: `permission denied for table
+- for the application role (`cap_app`), due to missing privilege: `permission denied for table
   audit_event`;
-- por qualquer papel, inclusive o dono, pelo trigger `audit_event_no_change`:
-  `audit.audit_event é append-only: <operação> recusado`.
+- for any role, including the owner, by the `audit_event_no_change` trigger:
+  `audit.audit_event é append-only: <operação> recusado` (the message is in Portuguese:
+  "audit.audit_event is append-only: <operation> rejected").
 
-O PostgreSQL registra os dois erros e o comando no log do servidor (configuração padrão:
-`log_min_messages = warning` e `log_min_error_statement = error`). A observabilidade da
-instalação deve coletar esse log e gerar alerta, e o evento `audit.tamper_attempt`, quando
-encontrar uma das mensagens acima com a tabela `audit_event`. Até a coleta existir, a
-tentativa fica no log do container `postgres`:
+PostgreSQL logs both errors and the statement in the server log (default configuration:
+`log_min_messages = warning` and `log_min_error_statement = error`). The deployment's
+observability stack must collect this log and raise an alert, plus the
+`audit.tamper_attempt` event, whenever it finds one of the messages above with the
+`audit_event` table. Until that collection exists, the attempt stays in the `postgres`
+container log:
 
 ```sh
 docker compose -f infra/compose/docker-compose.yml logs postgres | grep -E "append-only|permission denied for table audit_event"
 ```
 
-## Pontos de implantação (produção)
+## Deployment notes (production)
 
-- **IP de origem nos eventos do Keycloak:** atrás de proxy/ingress, configure
-  `KC_PROXY_HEADERS=xforwarded` (ou `forwarded`) e confie só no proxy da instalação. Sem
-  isso, o Audit Trail registra o IP do proxy, não o do usuário (no ambiente local aparece o
-  gateway do Docker, ex.: `172.18.0.1`).
-- **Importação de eventos:** o processo `cap-worker` precisa estar sempre em execução. A
-  observabilidade deve alertar na mensagem de log `Importação de eventos do Keycloak parada`
-  (cursor sem avançar há mais de 5 minutos; os eventos ficam 7 dias no Keycloak).
+- **Source IP in Keycloak events:** behind a proxy/ingress, set
+  `KC_PROXY_HEADERS=xforwarded` (or `forwarded`) and trust only the deployment's own proxy.
+  Without it, the Audit Trail records the proxy's IP, not the user's (locally you will see
+  the Docker gateway, e.g. `172.18.0.1`).
+- **Event import:** the `cap-worker` process must always be running. Observability must
+  alert on the log message `Importação de eventos do Keycloak parada` ("Keycloak event
+  import stalled": cursor has not advanced for more than 5 minutes; events are kept for
+  7 days in Keycloak).

@@ -1,40 +1,40 @@
-# Contrato: catálogo de eventos de auditoria (identidade e acesso)
+# Contract: audit event catalog (identity and access)
 
-Cobre a lista do RF-021. Campos de cada registro: ver
-[data-model.md](../data-model.md#audit_event-append-only-39). Nenhum evento leva senha,
-código, token ou link em `details`. Eventos de ações do Super Administrador gravam
-`installation_scope = true` e, quando se referem a uma organização, o `organization_id`
-dela (o Administrador da organização também os vê).
+Covers the RF-021 list. Fields of each record: see
+[data-model.md](../data-model.md#audit_event-append-only-39). No event carries a password,
+code, token or link in `details`. Events for Super Administrator actions record
+`installation_scope = true` and, when they concern an organization, its
+`organization_id` (the organization's Administrator sees them too).
 
-| `event_type` | Origem | Quando | `details` (exemplos) |
+| `event_type` | Source | When | `details` (examples) |
 |---|---|---|---|
-| `auth.login` | Keycloak `LOGIN` | Login completo (senha + código) | `organization_id` inicial |
-| `auth.login_failed` | Keycloak `LOGIN_ERROR` | Senha ou código incorretos | `reason`: `invalid_credentials`, `invalid_code`, `expired_code` |
-| `auth.locked` | Keycloak (brute force) | Bloqueio temporário | `until` |
-| `auth.logout` | Control Plane / Keycloak `LOGOUT` | Logout, inatividade, expiração | `reason`: `user`, `idle`, `max_age`, `revoked` |
-| `auth.session_revoked` | Control Plane | Sessão encerrada por terceiro ou pelo próprio usuário | `revoked_by` |
-| `auth.password_changed` | Keycloak `UPDATE_PASSWORD` | Troca voluntária | — |
-| `auth.password_reset_requested` | Keycloak `SEND_RESET_PASSWORD` | Pedido de recuperação | — |
-| `auth.password_reset` | Keycloak `RESET_PASSWORD` | Senha redefinida pelo link | — |
-| `user.activated` | Control Plane | Primeiro login após convite ou boas-vindas | `via`: `invitation`, `organization_invitation`, `bootstrap` |
-| `user.invited` | Control Plane | Convite criado | `profile`, `organization_id` |
-| `user.invitation_revoked` | Control Plane | Convite revogado | — |
-| `user.profile_changed` | Control Plane | Perfil alterado na organização | `from`, `to` |
-| `user.membership_added` / `user.membership_removed` | Control Plane | Inclusão ou remoção de organização | `organization_id`, `profile` |
-| `user.email_change_requested` / `user.email_changed` | Control Plane | Troca de e-mail | sem os e-mails em claro |
-| `user.disabled` / `user.enabled` | Control Plane | Desativação e reativação da conta | — |
-| `user.membership_disabled` / `user.membership_enabled` | Control Plane | Desativação e reativação do vínculo com a organização (inclusive de Administrador pelo Super Administrador) | `organization_id`, `profile` |
-| `user.anonymized` | CLI `cap-admin` | Pedido de esquecimento (LGPD); `actor_kind = support` | número do chamado |
-| `org.created` / `org.renamed` | Control Plane | Convite de organização (nasce `pending`) ou renomeação | `name` |
-| `org.activated` | Control Plane | Primeiro Administrador ativou o acesso | — |
-| `org.suspended` / `org.reactivated` | Control Plane | Suspensão e reativação pelo Super Administrador | `sessions_revoked` |
-| `org.invitation_resent` / `org.cancelled` | Control Plane | Reenvio do convite e cancelamento de organização pendente | — |
-| `org.switched` | Control Plane | Troca de organização ativa | `from`, `to` |
-| `super_admin.invited` / `super_admin.disabled` / `super_admin.enabled` | Control Plane | Gestão de Super Administradores (RF-030) | — |
-| `super_admin.converted` | Migração 0004 | Administrador da instalação convertido em Super Administrador; vínculos marcados `removed` | `memberships_removed` |
-| `security.settings_changed` | Control Plane | Configuração de segurança alterada | campos alterados (sem valores sensíveis) |
-| `access.denied` | Control Plane | Ação sem permissão (alvo: a rota) ou sobre pessoa de outra organização (alvo: a pessoa; a resposta é `404`, US5 cenário 8) | `permission` e `method`, ou `reason: other_organization` |
-| `audit.exported` | Control Plane | Exportação do histórico | filtro usado |
-| `audit.tamper_attempt` | Alerta sobre o log do PostgreSQL | Tentativa de alterar ou apagar evento (recusada pelo trigger) | `operation`, papel do banco |
-| `audit.origin_purged` | Control Plane | Expurgo de IP e navegador antigos | intervalo |
-| `support.activation_reissued` | CLI `cap-admin` | Reemissão de link pelo suporte | número do chamado |
+| `auth.login` | Keycloak `LOGIN` | Full login (password + code) | initial `organization_id` |
+| `auth.login_failed` | Keycloak `LOGIN_ERROR` | Wrong password or code | `reason`: `invalid_credentials`, `invalid_code`, `expired_code` |
+| `auth.locked` | Keycloak (brute force) | Temporary lockout | `until` |
+| `auth.logout` | Control Plane / Keycloak `LOGOUT` | Logout, inactivity, expiry | `reason`: `user`, `idle`, `max_age`, `revoked` |
+| `auth.session_revoked` | Control Plane | Session ended by someone else or by the user themselves | `revoked_by` |
+| `auth.password_changed` | Keycloak `UPDATE_PASSWORD` | Voluntary change | — |
+| `auth.password_reset_requested` | Keycloak `SEND_RESET_PASSWORD` | Recovery request | — |
+| `auth.password_reset` | Keycloak `RESET_PASSWORD` | Password reset via the link | — |
+| `user.activated` | Control Plane | First login after invitation or welcome e-mail | `via`: `invitation`, `organization_invitation`, `bootstrap` |
+| `user.invited` | Control Plane | Invitation created | `profile`, `organization_id` |
+| `user.invitation_revoked` | Control Plane | Invitation revoked | — |
+| `user.profile_changed` | Control Plane | Role changed in the organization | `from`, `to` |
+| `user.membership_added` / `user.membership_removed` | Control Plane | Added to or removed from an organization | `organization_id`, `profile` |
+| `user.email_change_requested` / `user.email_changed` | Control Plane | E-mail change | without the e-mails in clear text |
+| `user.disabled` / `user.enabled` | Control Plane | Account deactivation and reactivation | — |
+| `user.membership_disabled` / `user.membership_enabled` | Control Plane | Deactivation and reactivation of the organization membership (including an Administrator's, by the Super Administrator) | `organization_id`, `profile` |
+| `user.anonymized` | `cap-admin` CLI | Right-to-be-forgotten request (LGPD); `actor_kind = support` | ticket number |
+| `org.created` / `org.renamed` | Control Plane | Organization invitation (created as `pending`) or rename | `name` |
+| `org.activated` | Control Plane | First Administrator activated access | — |
+| `org.suspended` / `org.reactivated` | Control Plane | Suspension and reactivation by the Super Administrator | `sessions_revoked` |
+| `org.invitation_resent` / `org.cancelled` | Control Plane | Invitation resent and pending organization cancelled | — |
+| `org.switched` | Control Plane | Active organization switched | `from`, `to` |
+| `super_admin.invited` / `super_admin.disabled` / `super_admin.enabled` | Control Plane | Super Administrator management (RF-030) | — |
+| `super_admin.converted` | Migration 0004 | Installation administrator converted into Super Administrator; memberships marked `removed` | `memberships_removed` |
+| `security.settings_changed` | Control Plane | Security settings changed | changed fields (no sensitive values) |
+| `access.denied` | Control Plane | Action without permission (target: the route) or on a person from another organization (target: the person; the response is `404`, US5 scenario 8) | `permission` and `method`, or `reason: other_organization` |
+| `audit.exported` | Control Plane | History export | filter used |
+| `audit.tamper_attempt` | Alert on the PostgreSQL log | Attempt to change or delete an event (rejected by the trigger) | `operation`, database role |
+| `audit.origin_purged` | Control Plane | Purge of old IP and browser data | time range |
+| `support.activation_reissued` | `cap-admin` CLI | Link reissued by support | ticket number |

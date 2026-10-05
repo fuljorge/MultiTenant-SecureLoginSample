@@ -1,105 +1,106 @@
 # MultiTenant SecureLogin Sample
 
-Exemplo de uma aplicação **multi-tenant** com login seguro, controle de acesso por perfil e
-auditoria imutável. É um recorte, para portfólio, da camada de identidade de uma
-plataforma maior. Foi construído com Spec-Driven Development: especificação, plano e
-tarefas aprovados antes do código.
+Sample of a **multi-tenant** application with secure login, role-based access control and
+an immutable audit trail. It is a portfolio excerpt of the identity layer of a larger
+platform. It was built with Spec-Driven Development: specification, plan and tasks were
+approved before any code was written.
 
-> **Licença: só para consulta.** Você pode ler e estudar o código. Copiar, usar ou
-> redistribuir exige autorização. Detalhes em [LICENSE](LICENSE).
+> **License: reference only.** You may read and study the code. Copying, using or
+> redistributing it requires permission. Details in [LICENSE](LICENSE).
 
-## O que o exemplo demonstra
+## What the sample demonstrates
 
-- **Login direto com segundo fator** por código enviado ao e-mail (Keycloak), com:
-  - bloqueio por tentativas, que conta senha **e** código;
-  - recuperação de senha;
-  - lista de senhas vazadas;
-  - medidor de força da senha.
-- **Sessão no padrão BFF.** Os tokens nunca chegam ao navegador:
-  - cookies `__Host-`, `HttpOnly` e `SameSite`;
-  - proteção contra CSRF por *double submit*;
-  - inatividade de 30 min e duração máxima de 12 h;
+- **Direct login with a second factor** via a code sent by e-mail (Keycloak), with:
+  - lockout after failed attempts, counting both password **and** code;
+  - password recovery;
+  - a breached-password list;
+  - a password strength meter.
+- **BFF-pattern session.** Tokens never reach the browser:
+  - `__Host-`, `HttpOnly` and `SameSite` cookies;
+  - CSRF protection via *double submit*;
+  - 30 min idle timeout and 12 h maximum lifetime;
   - *back-channel logout*.
-- **Multi-tenant com RLS no PostgreSQL.** Cada transação define quem age e em qual
-  organização, e nenhum papel do banco ignora as políticas.
-- **Dois níveis de administração:**
-  - um **Super Administrador** cria e suspende organizações sem enxergar nada dentro
-    delas, o que é garantido pelo banco;
-  - um **Administrador** gere as pessoas da própria organização.
-- **Seis perfis fixos** aplicados em toda rota da API. Um teste estrutural reprova o CI se
-  alguma rota não declarar a proteção.
-- **Reautenticação recente** (senha e código) antes de ações sensíveis, quando o login
-  tem mais de 15 minutos.
-- **Audit Trail append-only com cadeia de hash.** Gatilho contra `UPDATE` e `DELETE`,
-  consulta com filtros, exportação em CSV e expurgo de IP e navegador por retenção
-  (LGPD).
-- **Pedido de esquecimento** (LGPD): anonimiza a pessoa sem quebrar a auditoria.
+- **Multi-tenancy with PostgreSQL RLS.** Each transaction sets who is acting and in which
+  organization, and no database role bypasses the policies.
+- **Two levels of administration:**
+  - a **Super Administrator** creates and suspends organizations without seeing anything
+    inside them, which is enforced by the database;
+  - an **Administrator** manages the people in their own organization.
+- **Six fixed roles** enforced on every API route. A structural test fails CI if any route
+  does not declare its protection.
+- **Recent re-authentication** (password and code) before sensitive actions, when the
+  login is more than 15 minutes old.
+- **Append-only Audit Trail with a hash chain.** Trigger against `UPDATE` and `DELETE`,
+  filtered queries, CSV export and retention-based purge of IP and browser data
+  (LGPD, Brazil's data protection law).
+- **Right-to-be-forgotten request** (LGPD): anonymizes the person without breaking the
+  audit trail.
 
-## Arquitetura
+## Architecture
 
 ```text
-Navegador ──cookie de sessão──▶ Studio (Next.js) ──/api──▶ Control Plane (FastAPI)
-                                                              │   ├── PostgreSQL 17 (RLS, auditoria)
-     telas de login e código ◀── Keycloak (OIDC + PKCE) ◀────┘   ├── Valkey (sessões)
-                                                                  ├── OpenBao (cifra dos tokens)
-                                                                  └── SMTP (Mailpit no local)
+Browser ──session cookie──▶ Studio (Next.js) ──/api──▶ Control Plane (FastAPI)
+                                                          │   ├── PostgreSQL 17 (RLS, audit)
+     login and code screens ◀── Keycloak (OIDC + PKCE) ◀──┘   ├── Valkey (sessions)
+                                                              ├── OpenBao (token encryption)
+                                                              └── SMTP (Mailpit locally)
 ```
 
-| Pasta | Conteúdo |
+| Folder | Contents |
 |---|---|
-| `services/control-plane/` | API FastAPI, migrações Alembic, CLI `cap-admin`, worker `cap-worker` |
-| `apps/studio/` | Interface (Next.js 16, React 19, shadcn/ui, TanStack Query) |
-| `packages/api-client/` | Cliente TypeScript gerado do OpenAPI (orval) |
-| `infra/` | Docker Compose local, imagem e realm do Keycloak (tema, extensão de código por e-mail) |
-| `tests/e2e/` | Playwright, desktop e celular |
-| `specs/001-identity-access/` | Especificação, plano, tarefas, contratos e checklists (OWASP ASVS L2, desempenho) |
+| `services/control-plane/` | FastAPI API, Alembic migrations, `cap-admin` CLI, `cap-worker` worker |
+| `apps/studio/` | UI (Next.js 16, React 19, shadcn/ui, TanStack Query) |
+| `packages/api-client/` | TypeScript client generated from OpenAPI (orval) |
+| `infra/` | Local Docker Compose, Keycloak image and realm (theme, e-mail code extension) |
+| `tests/e2e/` | Playwright, desktop and mobile |
+| `specs/001-identity-access/` | Specification, plan, tasks, contracts and checklists (OWASP ASVS L2, performance) |
 
-Os comentários e as specs citam a "constituição" e seções `§N` de uma referência de
-produto. São documentos internos do projeto original e não estão incluídos aqui.
+Code comments and specs refer to the "constitution" and to `§N` sections of a product
+reference. These are internal documents of the original project and are not included here.
 
-## Como rodar
+## How to run
 
-Pré-requisitos: Python 3.12 com [uv](https://docs.astral.sh/uv/), Node 24 com `corepack`
-e Docker. No Windows, use `127.0.0.1` (e não `localhost`) para o PostgreSQL e o Valkey.
+Prerequisites: Python 3.12 with [uv](https://docs.astral.sh/uv/), Node 24 with `corepack`
+and Docker. On Windows, use `127.0.0.1` (not `localhost`) for PostgreSQL and Valkey.
 
 ```sh
 uv sync && corepack pnpm install
-uv run python infra/compose/init_env.py          # gera credenciais locais (.env, fora do Git)
+uv run python infra/compose/init_env.py          # generates local credentials (.env, not in Git)
 docker compose -f infra/compose/docker-compose.yml up -d
 
 cd services/control-plane
 export CAP_ENV_FILE=../../infra/compose/.env.control-plane
 (set -a; . $CAP_ENV_FILE; uv run alembic upgrade head)
 uv run uvicorn cap_control_plane.main:run --factory --host 127.0.0.1 --port 8000
-uv run cap-worker                                 # em outro terminal
-uv run cap-admin bootstrap-super-admin --email voce@exemplo.com.br --name "Seu Nome"
+uv run cap-worker                                 # in another terminal
+uv run cap-admin bootstrap-super-admin --email you@example.com --name "Your Name"
 
 cd ../../apps/studio && corepack pnpm dev        # http://localhost:3000
 ```
 
-O link de ativação e os códigos de login chegam no Mailpit, em http://localhost:8025.
+The activation link and login codes arrive in Mailpit, at http://localhost:8025.
 
-## Testes e qualidade
+## Tests and quality
 
-| O quê | Comando |
+| What | Command |
 |---|---|
-| Lint e tipos (Python) | `uv run ruff check services/` · `cd services/control-plane && uv run mypy` |
-| Testes unitários e de contrato | `cd services/control-plane && uv run pytest -m "not integration"` |
-| Testes de integração (serviços reais) | `cd services/control-plane && uv run pytest` |
-| Lint, tipos e Vitest (TypeScript) | `corepack pnpm lint` · `corepack pnpm typecheck` · `corepack pnpm test` |
+| Lint and types (Python) | `uv run ruff check services/` · `cd services/control-plane && uv run mypy` |
+| Unit and contract tests | `cd services/control-plane && uv run pytest -m "not integration"` |
+| Integration tests (real services) | `cd services/control-plane && uv run pytest` |
+| Lint, types and Vitest (TypeScript) | `corepack pnpm lint` · `corepack pnpm typecheck` · `corepack pnpm test` |
 | E2E | `corepack pnpm e2e` |
 
-O CI (`.github/workflows/ci.yml`) roda:
-- lint, tipos e testes unitários de Python e TypeScript;
-- a verificação de que o cliente gerado está em dia com o OpenAPI;
+CI (`.github/workflows/ci.yml`) runs:
+- lint, type checks and unit tests for Python and TypeScript;
+- a check that the generated client is up to date with the OpenAPI spec;
 - gitleaks;
-- Trivy no código e nas imagens;
-- os E2E com as imagens do projeto, seguidos de uma varredura de segredos nos logs.
+- Trivy on the code and the images;
+- the E2E tests against the project images, followed by a secret scan of the logs.
 
-## Licença
+## License
 
-Copyright © 2026 Fulvio Jorge da Silva. Todos os direitos reservados. Publicado só para
-consulta, como exemplo de portfólio. Veja [LICENSE](LICENSE).
+Copyright © 2026 Fulvio Jorge da Silva. All rights reserved. Published for reference only,
+as a portfolio sample. See [LICENSE](LICENSE).
 
-Os componentes de terceiros mantêm as próprias licenças, listadas nos manifestos de
-dependências (`pyproject.toml`, `package.json` e `infra/keycloak/providers.lock`).
+Third-party components keep their own licenses, listed in the dependency manifests
+(`pyproject.toml`, `package.json` and `infra/keycloak/providers.lock`).

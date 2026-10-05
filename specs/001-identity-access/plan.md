@@ -1,398 +1,412 @@
-# Plano: Identidade, Autenticação e Controle de Acesso de Usuários
+# Plan: User Identity, Authentication and Access Control
 
 - **ID:** 001-identity-access
-- **Spec:** [spec.md](spec.md) (Aprovada em 2026-10-04, emenda ASVS)
-- **Status:** Aprovado <!-- Rascunho | Aprovado -->
-- **Emenda 2026-10-04:** reautenticação recente (RF-031) e medidor de força da senha
-  (RF-032), vindos do checklist ASVS (T076). Seções alteradas: 4.12 (nova), 8, 10 e 11.
-- **Revisão 2026-10-03:** Super Administrador e modelo híbrido. Seções alteradas: 1, 3,
-  4.2, 4.3, 4.4, 4.8, 4.11 (nova), 5, 7, 8, 10, 11 e 12 (nova).
-- **Criado em:** 2026-10-02
-- **Aprovado por / em:** Fulvio Jorge da Silva / 2026-10-04 (emenda ASVS; versões
-  anteriores aprovadas em 2026-10-02 e 2026-10-03)
+- **Spec:** [spec.md](spec.md) (Approved on 2026-10-04, ASVS amendment)
+- **Status:** Approved <!-- Draft | Approved -->
+- **Amendment 2026-10-04:** recent re-authentication (RF-031) and password strength meter
+  (RF-032), coming from the ASVS checklist (T076). Sections changed: 4.12 (new), 8, 10
+  and 11.
+- **Revision 2026-10-03:** Super Administrator and hybrid model. Sections changed: 1, 3,
+  4.2, 4.3, 4.4, 4.8, 4.11 (new), 5, 7, 8, 10, 11 and 12 (new).
+- **Created on:** 2026-10-02
+- **Approved by / on:** Fulvio Jorge da Silva / 2026-10-04 (ASVS amendment; previous
+  versions approved on 2026-10-02 and 2026-10-03)
 
-Artefatos: [research.md](research.md) · [data-model.md](data-model.md) ·
+Artifacts: [research.md](research.md) · [data-model.md](data-model.md) ·
 [contracts/identity-api.md](contracts/identity-api.md) ·
 [contracts/audit-events.md](contracts/audit-events.md)
 
-## 1. Resumo
+## 1. Summary
 
-O **Keycloak** faz a autenticação: login com e-mail e senha, código de segundo fator por
-e-mail (extensão Apache 2.0, research R1), bloqueio por tentativas, recuperação de senha
-e hash Argon2. O **Control Plane** (FastAPI) faz todo o resto: organizações, vínculos,
-perfis, escopo de Administrador, autorização por requisição, sessões do navegador no
-padrão BFF e Audit Trail com hash encadeado. O **SecureLogin** (Next.js) traz as telas de
-administração de usuários, organizações, segurança, auditoria e sessões.
+**Keycloak** handles authentication: e-mail and password login, a second-factor code by
+e-mail (Apache 2.0 extension, research R1), attempt lockout, password recovery and Argon2
+hashing. The **Control Plane** (FastAPI) handles everything else: organizations,
+memberships, roles, Administrator scope, per-request authorization, browser sessions in
+the BFF pattern and an Audit Trail with a hash chain. **SecureLogin** (Next.js) provides
+the administration screens for users, organizations, security, audit and sessions.
 
-Por ser a primeira feature com código, o plano também cria a estrutura do monorepo, o
-ambiente local (Docker Compose) e o CI com os gates da constituição.
+Because this is the first feature with code, the plan also creates the monorepo
+structure, the local environment (Docker Compose) and CI with the constitution's gates.
 
-**Revisão 2026-10-03.** O Administrador da instalação dá lugar ao **Super
-Administrador** do fornecedor (spec §4.8, RF-025 a RF-030). Hoje o escopo de instalação
-**ignora o RLS** em todas as tabelas de identidade; o Super Administrador passa a ter
-políticas próprias, que só expõem organizações, os seus Administradores e os convites de
-organização. Ele não tem organização ativa nem permissões de organização. A seção 12
-lista o que muda no código já entregue (US1 a US4).
+**Revision 2026-10-03.** The installation Administrator is replaced by the vendor's
+**Super Administrator** (spec §4.8, RF-025 to RF-030). Today the installation scope
+**bypasses RLS** on all identity tables; the Super Administrator gets their own policies,
+which only expose organizations, their Administrators and organization invitations. They
+have no active organization and no organization permissions. Section 12 lists what
+changes in the code already delivered (US1 to US4).
 
-## 2. Contexto técnico
+## 2. Technical context
 
-- **Linguagem/versão:** Python 3.12 (Control Plane); TypeScript 5.x (Studio). Nenhum
-  código Java próprio: a extensão do Keycloak entra como artefato pronto, com versão e
-  checksum fixados.
-- **Dependências principais:**
+- **Language/version:** Python 3.12 (Control Plane); TypeScript 5.x (Studio). No Java of
+  our own: the Keycloak extension comes in as a ready-made artifact, with pinned version
+  and checksum.
+- **Main dependencies:**
   - Control Plane: FastAPI, Pydantic v2, SQLAlchemy 2 + Alembic, Authlib, httpx,
-    redis-py (cliente compatível com Valkey), OpenTelemetry.
+    redis-py (Valkey-compatible client), OpenTelemetry.
   - Studio: Next.js, shadcn/ui + Radix UI + Tailwind CSS, TanStack Query + TanStack
-    Table, i18next, cliente gerado por orval.
-  - Identidade: Keycloak (versão fixada conforme R1), extensão
-    `keycloak-2fa-email-authenticator`, keycloak-config-cli.
-- **Armazenamento:** PostgreSQL 17 com RLS (dados do Control Plane); banco próprio do
-  Keycloak na mesma instância PostgreSQL, em database separado; Valkey (sessões); OpenBao
-  (segredos e chave de cifra das sessões).
-- **E-mail:** SMTP genérico configurado no provisionamento (Keycloak e Control Plane
-  usam o mesmo relay). Mailpit em desenvolvimento e testes.
-- **Testes:** pytest + Testcontainers, Vitest (proposto), Playwright, gitleaks, Trivy.
-- **Componentes afetados:** Control Plane, SecureLogin, Keycloak, infraestrutura local
-  e CI. Nenhum componente do data plane.
-- **Metas de desempenho:** RNF-007 da spec (etapas de login ≤ 2 s p95; e-mail do código
-  ≤ 60 s p95; troca de organização ≤ 2 s; revogação ≤ 60 s).
-- **Restrições:** licenças OSI (constituição, Seção 3); nada do Keycloak acessa o banco
-  do Control Plane e vice-versa.
+    Table, i18next, client generated by orval.
+  - Identity: Keycloak (version pinned per R1), the
+    `keycloak-2fa-email-authenticator` extension, keycloak-config-cli.
+- **Storage:** PostgreSQL 17 with RLS (Control Plane data); Keycloak's own database on
+  the same PostgreSQL instance, in a separate database; Valkey (sessions); OpenBao
+  (secrets and session encryption key).
+- **E-mail:** generic SMTP configured at provisioning (Keycloak and the Control Plane use
+  the same relay). Mailpit in development and tests.
+- **Tests:** pytest + Testcontainers, Vitest (proposed), Playwright, gitleaks, Trivy.
+- **Affected components:** Control Plane, SecureLogin, Keycloak, local infrastructure and
+  CI. No data plane component.
+- **Performance targets:** spec RNF-007 (login steps ≤ 2 s p95; code e-mail ≤ 60 s p95;
+  organization switch ≤ 2 s; revocation ≤ 60 s).
+- **Constraints:** OSI licenses (constitution, Section 3); nothing in Keycloak accesses
+  the Control Plane database and vice versa.
 
-## 3. Verificação da Constituição
+## 3. Constitution check
 
-| Princípio | Status | Como o plano atende |
+| Principle | Status | How the plan complies |
 |---|---|---|
-| I. Especificação primeiro | ✅ | Spec aprovada; plano e tarefas passam por aprovação antes do código |
-| II. Control/data plane, versões imutáveis | ✅ | Não se aplica: feature só do control plane, sem versões de agente |
-| III. Ações governadas por política | ✅ | Não se aplica a agentes (RNF-003). Autorização de usuários por matriz de permissões no servidor, negação por padrão |
-| IV. Isolamento multi-tenant | ✅ | `organization_id` + RLS em `membership` e `invitation`; contexto de organização por transação; papel do banco sem `BYPASSRLS`; **nenhum papel ignora o RLS**: o Super Administrador tem políticas próprias, restritas a organizações, Administradores e convites de organização; testes de isolamento por perfil, na troca de organização e para o Super Administrador |
-| V. LGPD desde o projeto | ✅ | Dados pessoais mínimos (nome, e-mail, IP, navegador); IP e navegador fora da cadeia de auditoria, com expurgo em 12 meses; anonimização no pedido de esquecimento; logs técnicos sem e-mail nem IP completos; o Super Administrador só vê nome e e-mail dos Administradores das organizações |
-| VI. Agnóstico a modelo e nuvem | ✅ | Keycloak, PostgreSQL, Valkey e OpenBao self-hosted; e-mail por SMTP genérico; nenhum serviço proprietário |
-| VII. Observável e auditável | ✅ | Audit Trail append-only com hash encadeado; eventos do Keycloak importados com cursor; traces OpenTelemetry nas rotas; métricas de login, bloqueio e entrega de e-mail |
-| VIII. Qualidade verificável | ✅ | Testes de unidade, integração, contrato e E2E por história; matriz de permissões testada por tabela (CS-004); gates de CI na seção 8 |
-| IX. Simplicidade e entrega por fase | ✅ | Sem OpenFGA, SSO, Keycloak Organizations, barramento de eventos nem Keycloakify; tudo dentro da Fase 1 |
-| X. Segurança da aplicação e dos dados | ✅ | Senhas só no Keycloak (Argon2); segredos no OpenBao; tokens de convite e troca de e-mail guardados como hash; tokens de sessão cifrados; cookie `__Host-` HttpOnly; CSRF; limites mínimos de segurança não configuráveis; gitleaks e Trivy no CI. Pendente: armazenamento do código na extensão (R1, item 1) |
-| XI. Segurança de IA | ✅ | Nenhum LLM ou agente participa da autenticação ou autorização (RNF-006) |
-| §2 Identidade de marca | ✅ | Tema do Keycloak e telas do Studio com os tokens do media kit, em PT-BR |
-| §3 Licenças e dependências | ✅ | Todas OSI (research R8); novas dependências registradas na stack nesta mudança |
+| I. Specification first | ✅ | Spec approved; plan and tasks go through approval before code |
+| II. Control/data plane, immutable versions | ✅ | Not applicable: control-plane-only feature, no agent versions |
+| III. Policy-governed actions | ✅ | Not applicable to agents (RNF-003). User authorization via a server-side permission matrix, deny by default |
+| IV. Multi-tenant isolation | ✅ | `organization_id` + RLS on `membership` and `invitation`; organization context per transaction; database role without `BYPASSRLS`; **no role bypasses RLS**: the Super Administrator has their own policies, restricted to organizations, Administrators and organization invitations; isolation tests per role, on organization switch and for the Super Administrator |
+| V. LGPD by design | ✅ | Minimal personal data (name, e-mail, IP, browser); IP and browser outside the audit chain, purged after 12 months; anonymization on right-to-be-forgotten requests; technical logs without full e-mail or IP; the Super Administrator sees only the name and e-mail of organization Administrators |
+| VI. Model- and cloud-agnostic | ✅ | Self-hosted Keycloak, PostgreSQL, Valkey and OpenBao; e-mail via generic SMTP; no proprietary service |
+| VII. Observable and auditable | ✅ | Append-only Audit Trail with hash chain; Keycloak events imported with a cursor; OpenTelemetry traces on routes; login, lockout and e-mail delivery metrics |
+| VIII. Verifiable quality | ✅ | Unit, integration, contract and E2E tests per story; permission matrix tested table-driven (CS-004); CI gates in section 8 |
+| IX. Simplicity and phased delivery | ✅ | No OpenFGA, SSO, Keycloak Organizations, event bus or Keycloakify; everything within Phase 1 |
+| X. Application and data security | ✅ | Passwords only in Keycloak (Argon2); secrets in OpenBao; invitation and e-mail change tokens stored as hashes; session tokens encrypted; `__Host-` HttpOnly cookie; CSRF; minimum security limits not configurable; gitleaks and Trivy in CI. Pending: code storage in the extension (R1, item 1) |
+| XI. AI safety | ✅ | No LLM or agent takes part in authentication or authorization (RNF-006) |
+| §2 Brand identity | ✅ | Keycloak theme and Studio screens with the media kit tokens, in Brazilian Portuguese |
+| §3 Licenses and dependencies | ✅ | All OSI (research R8); new dependencies recorded in the stack in this change |
 
-## 4. Arquitetura e design
+## 4. Architecture and design
 
 ```text
-Navegador
-   │  cookie de sessão (__Host-, HttpOnly)          telas de login e código
+Browser
+   │  session cookie (__Host-, HttpOnly)             login and code screens
    ▼                                                        ▲
 SecureLogin (Next.js) ── /api/v1 ──▶ Control Plane (FastAPI) ── OIDC + PKCE ─┘
                                         │   │   │                   Keycloak
-                                        │   │   └── Admin REST API ──▶ (realm da instalação,
-                                        │   │                           extensão de código por e-mail,
-                                        │   └── Valkey (sessões)        brute force, Argon2)
+                                        │   │   └── Admin REST API ──▶ (installation realm,
+                                        │   │                           e-mail code extension,
+                                        │   └── Valkey (sessions)       brute force, Argon2)
                                         ├── PostgreSQL (identity, audit, RLS)
-                                        ├── OpenBao (segredos, chave de cifra)
-                                        └── SMTP (avisos: senha trocada, e-mail trocado, convite a quem já tem conta)
+                                        ├── OpenBao (secrets, encryption key)
+                                        └── SMTP (notices: password changed, e-mail changed, invitation to existing accounts)
 ```
 
 ### 4.1 Login (US1)
 
-1. O Studio chama `GET /api/v1/auth/login`; o Control Plane redireciona ao Keycloak com
-   PKCE e `state`.
-2. O Keycloak executa o fluxo **senha → código por e-mail** e o bloqueio por tentativas.
-3. No retorno, o Control Plane troca o código por tokens, cria a sessão no Valkey,
-   escolhe a organização ativa (a última usada) e grava `auth.login`.
-4. Cada requisição carrega a sessão, revalida o vínculo com a organização ativa e aplica a
-   matriz de permissões. Inatividade (30 min) e duração máxima (12 h) valem na sessão do
-   BFF e no Keycloak.
+1. The Studio calls `GET /api/v1/auth/login`; the Control Plane redirects to Keycloak with
+   PKCE and `state`.
+2. Keycloak runs the **password → e-mail code** flow and the attempt lockout.
+3. On return, the Control Plane exchanges the code for tokens, creates the session in
+   Valkey, picks the active organization (the last one used) and records `auth.login`.
+4. Each request loads the session, revalidates the membership in the active organization
+   and applies the permission matrix. Inactivity (30 min) and maximum lifetime (12 h)
+   apply to both the BFF session and Keycloak.
 
-### 4.2 Autorização (US4, US5)
+### 4.2 Authorization (US4, US5)
 
-- Catálogo de permissões e matriz perfil × permissão em código (`permissions.py`),
-  espelhando a seção 5.1 da spec. Cada rota declara a permissão exigida.
-- Dois tipos de principal, que não se misturam:
-  - **membro de organização:** permissões do perfil na organização ativa (matriz);
-  - **Super Administrador:** permissões de instalação, sem organização ativa:
+- Permission catalog and role × permission matrix in code (`permissions.py`), mirroring
+  section 5.1 of the spec. Each route declares the required permission.
+- Two kinds of principal, which never mix:
+  - **organization member:** permissions of their role in the active organization
+    (matrix);
+  - **Super Administrator:** installation permissions, with no active organization:
     `organizations:manage`, `organization_admins:manage`, `super_admins:manage`,
-    `security:manage`, `billing:read:all`, `billing:manage:all` e
+    `security:manage`, `billing:read:all`, `billing:manage:all` and
     `audit:read:installation`.
-- Nenhum perfil de organização recebe permissão de instalação, e o Super Administrador
-  não recebe nenhuma permissão de organização (teste da matriz; RF-016, RF-028). O
-  Administrador implícito em todas as organizações deixa de existir.
-- A matriz cobre todas as áreas da spec. As áreas de outras features (agentes, custos,
-  conversas) ganham rotas e testes de ponta a ponta nas features delas; aqui recebem
-  testes de unidade da matriz.
-- **RF-015** (custos só dos próprios agentes) depende do conceito de "responsável pelo
-  agente", que nasce na feature de agentes. Este plano entrega a permissão
-  `costs:read:own`; o filtro é implementado e testado na feature do Dashboard de Custos.
+- No organization role receives an installation permission, and the Super Administrator
+  receives no organization permission (matrix test; RF-016, RF-028). The implicit
+  Administrator in every organization no longer exists.
+- The matrix covers every area of the spec. Areas belonging to other features (agents,
+  costs, conversations) get routes and end-to-end tests in their own features; here they
+  get matrix unit tests.
+- **RF-015** (costs of one's own agents only) depends on the "agent owner" concept, which
+  is introduced in the agents feature. This plan delivers the `costs:read:own`
+  permission; the filter is implemented and tested in the Cost Dashboard feature.
 
-### 4.3 Convites e ativação (US2, US3)
+### 4.3 Invitations and activation (US2, US3)
 
-- **Pessoa nova:** o Control Plane cria o usuário no Keycloak com a *required action*
-  `UPDATE_PASSWORD` e chama `execute-actions-email` (validade de 72 h; boas-vindas usa o
-  mesmo mecanismo). O vínculo fica `pending` e vira `active` no primeiro login.
-- **Pessoa já cadastrada:** convite próprio do Control Plane (token aleatório, guardado
-  como hash), aceito com a pessoa logada.
-- O e-mail do Keycloak usa templates próprios em PT-BR com a identidade da marca.
-- **Convite de organização (US5):** `POST /organizations` cria, na mesma transação, a
-  organização `pending`, a pessoa (se for nova) e o vínculo `administrator` `pending`,
-  reaproveitando os dois caminhos acima. Quando o primeiro vínculo de Administrador fica
-  `active` (primeiro login ou aceite), a organização passa a `active` na mesma
-  transação. Reenvio gera novo link ou token; cancelamento só vale para `pending` e leva
-  a organização a `cancelled` (não há exclusão; o histórico fica no Audit Trail).
-- Convite para o e-mail de um Super Administrador é recusado (spec, casos de borda).
+- **New person:** the Control Plane creates the user in Keycloak with the `UPDATE_PASSWORD`
+  *required action* and calls `execute-actions-email` (72 h validity; the welcome e-mail
+  uses the same mechanism). The membership stays `pending` and becomes `active` on first
+  login.
+- **Already registered person:** the Control Plane's own invitation (random token, stored
+  as a hash), accepted while the person is logged in.
+- Keycloak e-mails use custom Brazilian Portuguese templates with the brand identity.
+- **Organization invitation (US5):** `POST /organizations` creates, in the same
+  transaction, the `pending` organization, the person (if new) and the `pending`
+  `administrator` membership, reusing both paths above. When the first Administrator
+  membership becomes `active` (first login or acceptance), the organization becomes
+  `active` in the same transaction. Resending generates a new link or token; cancelling
+  only applies to `pending` and moves the organization to `cancelled` (there is no
+  deletion; the history stays in the Audit Trail).
+- An invitation to a Super Administrator's e-mail is rejected (spec, edge cases).
 
-### 4.4 Desativação e revogação (RF-011, CS-005)
+### 4.4 Deactivation and revocation (RF-011, CS-005)
 
-Na mesma operação: `enabled=false` no Keycloak, logout de todas as sessões do usuário no
-Keycloak e remoção das sessões do BFF (`cap:user-sess:{user_id}`). Efeito imediato na
-próxima requisição.
+In the same operation: `enabled=false` in Keycloak, logout of all the user's sessions in
+Keycloak and removal of the BFF sessions (`cap:user-sess:{user_id}`). Immediate effect on
+the next request.
 
-**Revisão 2026-10-03: desativação por organização.** Sem o Administrador da instalação,
-ninguém poderia desativar a conta de quem pertence a mais de uma organização, e na
-instalação compartilhada o Administrador de um cliente não pode tirar o acesso de uma
-pessoa a outro cliente. Por isso:
+**Revision 2026-10-03: per-organization deactivation.** Without the installation
+Administrator, nobody could disable the account of someone who belongs to more than one
+organization, and on a shared installation one customer's Administrator cannot remove a
+person's access to another customer. Therefore:
 
-- desativar e reativar agem sobre o **vínculo** com a organização (`membership.status`
-  `disabled`), e as sessões cuja organização ativa é essa são removidas;
-- se a pessoa fica sem nenhum vínculo ativo, a conta também é desativada no Keycloak,
-  como acima (é o caso de quem só tem uma organização, que é o cenário da US3);
-- a desativação de um Administrador pelo Super Administrador (RF-027) usa a mesma
-  operação.
+- disable and re-enable act on the **membership** in the organization
+  (`membership.status` `disabled`), and sessions whose active organization is that one are
+  removed;
+- if the person is left with no active membership, the account is also disabled in
+  Keycloak, as above (this is the case of someone with only one organization, which is the
+  US3 scenario);
+- the Super Administrator disabling an Administrator (RF-027) uses the same operation.
 
-### 4.5 Troca de senha (RF-005)
+### 4.5 Password change (RF-005)
 
-O fluxo de recuperação do Keycloak encerra as outras sessões. O worker de eventos, ao
-ver `UPDATE_PASSWORD` ou `RESET_PASSWORD`, remove as sessões do BFF e envia o aviso por
-e-mail. O *back-channel logout* cobre o intervalo até a leitura do evento.
+Keycloak's recovery flow ends the other sessions. The event worker, on seeing
+`UPDATE_PASSWORD` or `RESET_PASSWORD`, removes the BFF sessions and sends the notice by
+e-mail. *Back-channel logout* covers the gap until the event is read.
 
-### 4.6 Troca de e-mail (US3, cenário 6)
+### 4.6 E-mail change (US3, scenario 6)
 
-Token de confirmação próprio (hash no banco, 24 h) enviado ao novo e-mail. Na
-confirmação: atualiza o Keycloak, encerra sessões, avisa o e-mail antigo.
+Our own confirmation token (hash in the database, 24 h) sent to the new e-mail. On
+confirmation: updates Keycloak, ends sessions, notifies the old e-mail.
 
 ### 4.7 Audit Trail (US6)
 
-- Eventos do Control Plane gravados na mesma transação da operação.
-- Worker importa eventos do Keycloak a cada 5 s com cursor e deduplicação
+- Control Plane events written in the same transaction as the operation.
+- A worker imports Keycloak events every 5 s with a cursor and deduplication
   (`source`, `source_event_id`).
-- Hash encadeado, gravação serializada, papel de banco só com `INSERT`/`SELECT` e trigger
-  contra alteração; rotina de verificação da cadeia.
+- Hash chain, serialized writes, database role with only `INSERT`/`SELECT` and a trigger
+  against changes; chain verification routine.
 
-### 4.8 Configuração de segurança (RF-007)
+### 4.8 Security settings (RF-007)
 
-Tela do Super Administrador que lê e grava no realm do Keycloak (política de
-senha, tempos de sessão, bloqueio, parâmetros do código), com limites mínimos que a API
-recusa afrouxar (ver contrato).
+Super Administrator screen that reads and writes the Keycloak realm (password policy,
+session timeouts, lockout, code parameters), with minimum limits the API refuses to relax
+(see the contract).
 
 ### 4.9 Keycloak
 
-- Imagem própria construída a partir da oficial, com a extensão baixada por versão e
-  **checksum SHA-256 verificado**, tema `cap` (CSS + mensagens PT-BR) e build otimizado.
-- Realm por instalação, aplicado por keycloak-config-cli a partir de
+- Custom image built from the official one, with the extension downloaded by version and
+  **SHA-256 checksum verified**, the `cap` theme (CSS + Brazilian Portuguese messages) and
+  an optimized build.
+- Realm per installation, applied by keycloak-config-cli from
   `infra/keycloak/realm/cap-realm.yaml`:
-  - fluxo de navegador: formulário de usuário e senha → código por e-mail (obrigatório);
-  - registro de novos usuários desligado; login por e-mail;
-  - brute force: bloqueio temporário de 15 min após 5 falhas;
-  - política de senha: 12+ caracteres, lista de senhas vazadas, histórico de 5, diferente
-    do e-mail;
-  - sessão: inatividade de 30 min, máximo de 12 h; links de ação: 72 h (convite),
-    30 min (recuperação);
-  - eventos de login e de administração habilitados, guardados por 7 dias;
-  - cliente `cap-control-plane` (confidencial, PKCE, back-channel logout);
-  - cliente `cap-admin-bridge` (conta de serviço com papéis mínimos: `manage-users`,
-    `view-events`, `view-realm`, `manage-realm` só para a tela de segurança).
-- Keycloak exposto no mesmo domínio da instalação, no caminho `/idp`.
+  - browser flow: username and password form → e-mail code (mandatory);
+  - self-registration disabled; login by e-mail;
+  - brute force: 15 min temporary lockout after 5 failures;
+  - password policy: 12+ characters, breached-password list, history of 5, different from
+    the e-mail;
+  - session: 30 min idle, 12 h maximum; action links: 72 h (invitation), 30 min
+    (recovery);
+  - login and admin events enabled, kept for 7 days;
+  - `cap-control-plane` client (confidential, PKCE, back-channel logout);
+  - `cap-admin-bridge` client (service account with minimal roles: `manage-users`,
+    `view-events`, `view-realm`, `manage-realm` only for the security screen).
+- Keycloak exposed on the same domain as the installation, at the `/idp` path.
 
-### 4.10 Ambiente local
+### 4.10 Local environment
 
-`infra/compose/docker-compose.yml` sobe PostgreSQL, Valkey, OpenBao (modo dev), Mailpit,
-Keycloak (imagem própria) e aplica o realm. Control Plane e Studio rodam fora ou dentro
-do compose. Comandos documentados no `AGENTS.md` (seção 9) ao fim da implementação.
+`infra/compose/docker-compose.yml` starts PostgreSQL, Valkey, OpenBao (dev mode),
+Mailpit, Keycloak (custom image) and applies the realm. The Control Plane and Studio run
+outside or inside compose. Commands documented in `AGENTS.md` (section 9) at the end of
+the implementation.
 
-### 4.11 Super Administrador (US2, US5; RF-025 a RF-030)
+### 4.11 Super Administrator (US2, US5; RF-025 to RF-030)
 
-- **Armazenamento:** a tabela `installation_admin` vira `super_admin`. Um *trigger*
-  recusa vínculo com organização para quem é Super Administrador e recusa tornar Super
-  Administrador quem tem vínculo ativo (RF-028), além da checagem no serviço.
-- **RLS:** a função `identity.has_installation_scope()` dá lugar a
-  `identity.is_super_admin()`, usada só em políticas específicas:
-  - `organization`: ler, criar e alterar todas;
-  - `membership` e `invitation`: só as linhas com perfil `administrator`;
-  - `user_account`: só pessoas com vínculo de Administrador ou que são Super
-    Administradores;
-  - `email_change_request` e tabelas de outras features: nenhuma política para ele.
-  Um teste executa as consultas com o contexto do Super Administrador direto no banco e
-  confirma que pessoas e vínculos de outros perfis não aparecem.
-- **Sessão:** o Super Administrador entra sem organização ativa; `GET /me` informa o
-  tipo de principal, e o Studio abre a tela de organizações. Pessoa sem organização
-  acessível e que não é Super Administrador continua recebendo o erro
-  `sem-organizacao`.
-- **Organização suspensa ou pendente:** a revalidação de cada requisição passa a exigir
-  `organization.status = 'active'`. Na suspensão, as sessões com essa organização ativa
-  são removidas do BFF; quem não tem outra organização ativa também é desconectado no
-  Keycloak (CS-009).
-- **Último Administrador (RF-012):** travamento dos vínculos de Administrador da
-  organização (`FOR UPDATE`) na desativação, na remoção e na mudança de perfil; a mesma
-  técnica já usada para o escopo de instalação vale para os Super Administradores.
-- **Auditoria:** `audit_event` ganha `installation_scope` (booleano, dentro da cadeia de
-  hash). Ações do Super Administrador sobre uma organização gravam o `organization_id`
-  dela **e** `installation_scope = true`: o Administrador da organização vê pelo
-  `organization_id`, e o Super Administrador vê por `installation_scope` ou pelos
-  eventos feitos por Super Administradores, como os logins deles (US6, cenário 2).
-- **Billing:** só as permissões (RF-029); rotas e telas na feature de Faturamento.
-- **Studio:** menu "Organizações" (lista com filtros, convite, detalhe com
-  Administradores, suspender e reativar), "Super Administradores" e "Segurança"; o
-  cabeçalho mostra "Super Administrador" no lugar da organização.
+- **Storage:** the `installation_admin` table becomes `super_admin`. A *trigger* rejects
+  an organization membership for anyone who is a Super Administrator and rejects making
+  someone with an active membership a Super Administrator (RF-028), in addition to the
+  check in the service.
+- **RLS:** the `identity.has_installation_scope()` function is replaced by
+  `identity.is_super_admin()`, used only in specific policies:
+  - `organization`: read, create and update all;
+  - `membership` and `invitation`: only rows with the `administrator` role;
+  - `user_account`: only people with an Administrator membership or who are Super
+    Administrators;
+  - `email_change_request` and tables of other features: no policy for them.
+  A test runs the queries with the Super Administrator context directly in the database
+  and confirms that people and memberships with other roles do not appear.
+- **Session:** the Super Administrator signs in without an active organization; `GET /me`
+  reports the principal type, and the Studio opens the organizations screen. A person with
+  no accessible organization who is not a Super Administrator still gets the
+  `sem-organizacao` ("no organization") error.
+- **Suspended or pending organization:** the per-request revalidation now requires
+  `organization.status = 'active'`. On suspension, sessions with that active organization
+  are removed from the BFF; anyone with no other active organization is also logged out
+  of Keycloak (CS-009).
+- **Last Administrator (RF-012):** the organization's Administrator memberships are
+  locked (`FOR UPDATE`) on deactivation, removal and role change; the same technique
+  already used for the installation scope applies to Super Administrators.
+- **Audit:** `audit_event` gets `installation_scope` (boolean, inside the hash chain).
+  Super Administrator actions on an organization record its `organization_id` **and**
+  `installation_scope = true`: the organization's Administrator sees them via
+  `organization_id`, and the Super Administrator sees them via `installation_scope` or via
+  events performed by Super Administrators, such as their logins (US6, scenario 2).
+- **Billing:** permissions only (RF-029); routes and screens in the Billing feature.
+- **Studio:** "Organizations" menu (filtered list, invitation, detail with
+  Administrators, suspend and reactivate), "Super Administrators" and "Security"; the
+  header shows "Super Administrator" in place of the organization.
 
-### 4.12 Reautenticação recente e medidor de força (RF-031, RF-032)
+### 4.12 Recent re-authentication and strength meter (RF-031, RF-032)
 
-- **Momento do login:** o callback guarda na sessão do BFF o `auth_time` do ID token
-  (quando a pessoa digitou senha e código). Uma renovação de tokens não muda esse valor.
-- **Dependência `require_recent_auth`:** nas rotas do RF-031, junto da permissão. Se o
-  `auth_time` tiver mais de 15 min, responde `401` com Problem Details
-  `{"code": "reauth_required"}` e não executa nada. O prazo é constante nesta fase.
-- **Nova autenticação:** `GET /auth/login?reauth=1&return_to=...` manda ao Keycloak
-  `prompt=login` e `max_age=0`, que exigem senha e código mesmo com sessão SSO. No
-  callback, a sessão anterior do mesmo navegador é substituída pela nova.
-- **Troca de senha:** `GET /auth/password` passa a enviar `max_age=0` junto do
+- **Login time:** the callback stores the ID token's `auth_time` (when the person typed
+  password and code) in the BFF session. A token refresh does not change this value.
+- **`require_recent_auth` dependency:** on the RF-031 routes, alongside the permission.
+  If `auth_time` is more than 15 min old, it responds `401` with Problem Details
+  `{"code": "reauth_required"}` and does nothing. The window is constant in this phase.
+- **New authentication:** `GET /auth/login?reauth=1&return_to=...` sends Keycloak
+  `prompt=login` and `max_age=0`, which require password and code even with an SSO
+  session. In the callback, the previous session of the same browser is replaced by the
+  new one.
+- **Password change:** `GET /auth/password` now sends `max_age=0` together with
   `kc_action=UPDATE_PASSWORD`.
-- **Studio:** o cliente da API reconhece `reauth_required`, guarda a tela atual e leva a
-  pessoa à nova autenticação; ao voltar, mostra "Identidade confirmada, repita a ação".
-  A ação não é repetida sozinha, para a pessoa ver o que vai acontecer.
-- **Teste estrutural:** a lista de rotas do RF-031 fica no contrato; um teste confere que
-  cada uma declara `require_recent_auth` e que nenhuma outra declara.
-- **Medidor de força:** script no tema `cap` do Keycloak, nas telas de definir senha
-  (ativação, convite, recuperação e troca), com heurística local (tamanho, variedade de
-  caracteres, repetições e sequências) e rótulos em PT-BR. Sem dependência nova; não
-  bloqueia o envio: quem decide é a política do realm.
+- **Studio:** the API client recognizes `reauth_required`, saves the current screen and
+  takes the person to the new authentication; on return, it shows "Identity confirmed,
+  repeat the action". The action is not repeated automatically, so the person sees what
+  is about to happen.
+- **Structural test:** the list of RF-031 routes lives in the contract; a test checks that
+  each one declares `require_recent_auth` and that no other route does.
+- **Strength meter:** a script in the Keycloak `cap` theme, on the set-password screens
+  (activation, invitation, recovery and change), with a local heuristic (length,
+  character variety, repetitions and sequences) and Brazilian Portuguese labels. No new
+  dependency; it does not block submission: the realm policy decides.
 
-## 5. Modelo de dados
+## 5. Data model
 
-Ver [data-model.md](data-model.md). Tabelas `organization`, `user_account`,
-`super_admin`, `membership`, `invitation`, `email_change_request` (schema `identity`),
-`audit_event`, `audit_event_origin`, `keycloak_event_cursor` (schema `audit`); sessões no
-Valkey. A revisão de 2026-10-03 entra por uma migração nova (0004), sem editar as
-anteriores.
+See [data-model.md](data-model.md). Tables `organization`, `user_account`,
+`super_admin`, `membership`, `invitation`, `email_change_request` (`identity` schema),
+`audit_event`, `audit_event_origin`, `keycloak_event_cursor` (`audit` schema); sessions in
+Valkey. The 2026-10-03 revision comes in through a new migration (0004), without editing
+the previous ones.
 
-## 6. Contratos
+## 6. Contracts
 
-- API: [contracts/identity-api.md](contracts/identity-api.md); OpenAPI gerado pelo
-  FastAPI e cliente TypeScript gerado por orval (verificação de divergência no CI).
-- Eventos de auditoria: [contracts/audit-events.md](contracts/audit-events.md).
-- Configuração do Keycloak: `infra/keycloak/realm/cap-realm.yaml` (versionado).
+- API: [contracts/identity-api.md](contracts/identity-api.md); OpenAPI generated by
+  FastAPI and TypeScript client generated by orval (drift check in CI).
+- Audit events: [contracts/audit-events.md](contracts/audit-events.md).
+- Keycloak configuration: `infra/keycloak/realm/cap-realm.yaml` (versioned).
 
-## 7. Estrutura de código
+## 7. Code structure
 
 ```text
 apps/
   studio/                          # Next.js — SecureLogin
     src/app/(app)/admin/usuarios/
-    src/app/(app)/admin/organizacoes/       # Super Administrador
+    src/app/(app)/admin/organizacoes/       # Super Administrator
     src/app/(app)/admin/super-administradores/
     src/app/(app)/admin/seguranca/
     src/app/(app)/admin/auditoria/
     src/app/(app)/conta/sessoes/
     src/components/org-switcher/
-    src/lib/auth/                  # sessão, CSRF, permissões no cliente (só para exibir)
-    src/styles/tokens.css          # tokens do media kit
+    src/lib/auth/                  # session, CSRF, client-side permissions (display only)
+    src/styles/tokens.css          # media kit tokens
 services/
   control-plane/
     src/cap_control_plane/
-      core/                        # settings, db, RLS, segredos (OpenBao), e-mail, telemetria
+      core/                        # settings, db, RLS, secrets (OpenBao), e-mail, telemetry
       identity/                    # api, service, permissions, sessions, keycloak_admin, oidc
       audit/                       # chain, writer, keycloak_ingestor, api, export
       cli/                         # cap-admin
     migrations/                    # Alembic
     tests/{unit,integration,contract}/
 packages/
-  api-client/                      # gerado por orval
+  api-client/                      # generated by orval
 infra/
   keycloak/{Dockerfile,realm/,themes/cap/,providers.lock}
   compose/docker-compose.yml
 tests/
-  e2e/                             # Playwright (lê códigos no Mailpit)
+  e2e/                             # Playwright (reads codes from Mailpit)
 .github/workflows/ci.yml
-pyproject.toml                     # workspace uv
+pyproject.toml                     # uv workspace
 pnpm-workspace.yaml
 .gitleaks.toml
 ```
 
-## 8. Estratégia de testes
+Studio route folders keep their Portuguese names (`usuarios` = users, `organizacoes` =
+organizations, `super-administradores` = super administrators, `seguranca` = security,
+`auditoria` = audit, `conta/sessoes` = account/sessions) because they are user-facing URLs.
 
-- **Unitários:** matriz de permissões (tabela perfil × permissão, incluindo escopos de
-  Administrador); cadeia de hash; validação de limites da configuração de segurança;
-  mapeamento de eventos do Keycloak.
-- **Contrato:** OpenAPI gerado comparado ao contrato; cliente TypeScript sem divergência.
-- **Integração (Testcontainers):** PostgreSQL com RLS real; Valkey; Keycloak com a imagem
-  e o realm do projeto. Fluxos: convite, ativação, desativação com revogação, troca de
-  e-mail, último Administrador, edições concorrentes (`412`), importação de eventos sem
-  duplicar.
-- **Isolamento de organização (Princípio IV):** para cada rota, usuário da organização A
-  tenta ler e alterar recursos da organização B → `404`/`403` e `access.denied`; troca de
-  organização só para vínculos válidos.
-- **Super Administrador:** a matriz rota × principal (T055) ganha o Super Administrador:
-  `403` e `access.denied` em toda rota de organização; RLS testado direto no banco com o
-  contexto dele; vínculo recusado pelo *trigger*; suspensão encerra o acesso em até
-  60 s; último Administrador de organização e último Super Administrador protegidos;
-  convite de organização de ponta a ponta no E2E.
-- **E2E (Playwright):** cada história de P1 de ponta a ponta, com o código lido no
-  Mailpit; login com código expirado, reenviado e incorreto; bloqueio; recuperação de
-  senha com aviso; telas em viewport de celular.
-- **Segurança:**
-  - varredura de segredos (gitleaks) e de vulnerabilidades (Trivy) no CI;
-  - verificação de que senha, código, token e link não aparecem em logs, respostas e
-    Audit Trail (CS-007), com captura de logs nos testes de integração e E2E;
-  - cookies com atributos corretos; CSRF recusado sem cabeçalho;
-  - enumeração de usuários: mesma resposta e tempo semelhante para e-mail existente ou
-    não;
-  - checklist OWASP ASVS nível 2 (capítulos V2 autenticação, V3 sessão, V4 controle de
-    acesso) preenchido na revisão.
-- **Gates de IA/política:** não se aplicam (sem agentes nem políticas OPA).
+## 8. Test strategy
 
-## 9. Rastreamento de complexidade
+- **Unit:** permission matrix (role × permission table, including Administrator scopes);
+  hash chain; validation of security settings limits; Keycloak event mapping.
+- **Contract:** generated OpenAPI compared with the contract; TypeScript client without
+  drift.
+- **Integration (Testcontainers):** PostgreSQL with real RLS; Valkey; Keycloak with the
+  project's image and realm. Flows: invitation, activation, deactivation with revocation,
+  e-mail change, last Administrator, concurrent edits (`412`), event import without
+  duplicates.
+- **Organization isolation (Principle IV):** for each route, a user from organization A
+  tries to read and change resources of organization B → `404`/`403` and `access.denied`;
+  organization switch only to valid memberships.
+- **Super Administrator:** the route × principal matrix (T055) gains the Super
+  Administrator: `403` and `access.denied` on every organization route; RLS tested
+  directly in the database with their context; membership rejected by the *trigger*;
+  suspension ends access within 60 s; last organization Administrator and last Super
+  Administrator protected; organization invitation end to end in E2E.
+- **E2E (Playwright):** each P1 story end to end, with the code read from Mailpit; login
+  with expired, resent and wrong code; lockout; password recovery with notice; screens in
+  a mobile viewport.
+- **Security:**
+  - secret scanning (gitleaks) and vulnerability scanning (Trivy) in CI;
+  - checking that passwords, codes, tokens and links do not appear in logs, responses or
+    the Audit Trail (CS-007), with log capture in integration and E2E tests;
+  - cookies with the correct attributes; CSRF rejected without the header;
+  - user enumeration: same response and similar timing for existing and non-existing
+    e-mails;
+  - OWASP ASVS level 2 checklist (chapters V2 authentication, V3 session, V4 access
+    control) filled in during review.
+- **AI/policy gates:** not applicable (no agents or OPA policies).
 
-Nenhuma exceção à constituição.
+## 9. Complexity tracking
 
-## 10. Decisões e riscos
+No exceptions to the constitution.
 
-| Decisão / risco | Alternativas consideradas | Justificativa / mitigação |
+## 10. Decisions and risks
+
+| Decision / risk | Alternatives considered | Rationale / mitigation |
 |---|---|---|
-| Código por e-mail via extensão de terceiros (R1) | Extensão própria em Java; outra extensão | Licença Apache 2.0, ativa, configurável. Risco de mantenedor único e de atraso em relação às versões do Keycloak: versão fixada, checksum, plano B documentado |
-| Extensão pode guardar o código em texto claro na sessão de login (R1, item 1) | — | Verificação bloqueante antes de configurar o fluxo; correção por contribuição ou fork |
-| Organizações e perfis no Control Plane, não no Keycloak (R2) | Keycloak Organizations | Autorização imediata (RF-017), RLS junto dos dados, uma fonte de verdade |
-| BFF com sessão no Valkey (R3) | Tokens no navegador; Auth.js | Tokens fora do alcance de XSS; lógica de sessão num só lugar |
-| Eventos do Keycloak por leitura periódica (R4) | Event listener SPI + fila | Sem Java próprio nem barramento de eventos na Fase 1; alerta se o cursor atrasar |
-| Perda do Valkey derruba as sessões | Sessões no PostgreSQL | Efeito é só um novo login; Valkey com persistência habilitada |
-| Retenção de IP e navegador de 12 meses | Outro prazo | Valor inicial configurável; confirmar com o jurídico/DPO |
-| Entrega de e-mail (código, convites) depende de SPF/DKIM do domínio da instalação | — | Requisito para o provisionamento (§53.2); falha de envio alertada pelo log de erro do Keycloak, via observabilidade (RNF-004, achado A14) |
-| Exportação periódica do Audit Trail para armazenamento WORM (stack §3.11) | — | Fica para a feature de observabilidade/auditoria; esta feature entrega a tabela e a verificação da cadeia |
-| Super Administrador com políticas RLS próprias, sem ignorar o RLS | Manter `has_installation_scope()` e filtrar no serviço | Um erro no serviço exporia dados de clientes na instalação compartilhada; no banco, a barreira vale para qualquer consulta |
-| Desativação por vínculo com a organização | Desativar sempre a conta | Na instalação compartilhada, um cliente não pode tirar o acesso de uma pessoa a outro cliente |
-| `installation_scope` no evento de auditoria | Tabela separada para eventos de instalação | Uma só cadeia de hash e uma só consulta; o Administrador da organização continua vendo as ações do Super Administrador sobre ela |
-| Dados locais existentes (Administrador da instalação com vínculos) | Apagar e recriar o ambiente | A migração 0004 converte em Super Administrador e marca os vínculos dele como `removed`, com evento no Audit Trail; não há instalação em produção |
-| Segundo fator do Super Administrador igual ao dos demais | Exigir fator mais forte | Suposição da spec; reavaliar com o segundo fator por aplicativo (fase futura) |
-| Reautenticação por `auth_time` + `prompt=login`/`max_age=0` (RF-031) | Senha digitada num modal do Studio; confirmação por código no e-mail | A senha nunca passa pelo Control Plane (Princípio X); o Keycloak já aplica senha, código e bloqueio por tentativas |
-| Medidor de força com heurística própria (RF-032) | zxcvbn | Sem dependência nova de ~800 KB no tema; o medidor só orienta, a política do realm decide |
-| P3 a P5 do checklist ASVS (administrador do realm `master`, TLS no SMTP, segredos de produção) | Resolver na 001 | Dependem de como a instalação é criada; viraram requisitos do provisionamento (§53.2) |
+| E-mail code via a third-party extension (R1) | Own Java extension; another extension | Apache 2.0 license, active, configurable. Risk of a single maintainer and of lagging behind Keycloak versions: pinned version, checksum, documented plan B |
+| The extension may store the code in clear text in the login session (R1, item 1) | — | Blocking check before configuring the flow; fix via contribution or fork |
+| Organizations and roles in the Control Plane, not in Keycloak (R2) | Keycloak Organizations | Immediate authorization (RF-017), RLS next to the data, a single source of truth |
+| BFF with session in Valkey (R3) | Tokens in the browser; Auth.js | Tokens out of XSS reach; session logic in a single place |
+| Keycloak events via periodic polling (R4) | Event listener SPI + queue | No Java of our own and no event bus in Phase 1; alert if the cursor lags |
+| Losing Valkey drops the sessions | Sessions in PostgreSQL | The only effect is a new login; Valkey with persistence enabled |
+| 12-month retention of IP and browser | Another period | Configurable initial value; confirm with legal/DPO |
+| E-mail delivery (code, invitations) depends on the installation domain's SPF/DKIM | — | Provisioning requirement (§53.2); send failures alerted via the Keycloak error log, through observability (RNF-004, finding A14) |
+| Periodic export of the Audit Trail to WORM storage (stack §3.11) | — | Left to the observability/audit feature; this feature delivers the table and chain verification |
+| Super Administrator with their own RLS policies, without bypassing RLS | Keep `has_installation_scope()` and filter in the service | A bug in the service would expose customer data on the shared installation; in the database, the barrier holds for every query |
+| Deactivation per organization membership | Always disable the account | On a shared installation, one customer cannot remove a person's access to another customer |
+| `installation_scope` on the audit event | Separate table for installation events | A single hash chain and a single query; the organization Administrator still sees the Super Administrator's actions on it |
+| Existing local data (installation Administrator with memberships) | Wipe and recreate the environment | Migration 0004 converts them into a Super Administrator and marks their memberships as `removed`, with an Audit Trail event; there is no production installation |
+| Super Administrator second factor same as everyone else's | Require a stronger factor | Spec assumption; reassess with the authenticator app second factor (future phase) |
+| Re-authentication via `auth_time` + `prompt=login`/`max_age=0` (RF-031) | Password typed in a Studio modal; confirmation via e-mail code | The password never passes through the Control Plane (Principle X); Keycloak already enforces password, code and attempt lockout |
+| Strength meter with our own heuristic (RF-032) | zxcvbn | No new ~800 KB dependency in the theme; the meter only guides, the realm policy decides |
+| ASVS checklist P3 to P5 (`master` realm administrator, SMTP TLS, production secrets) | Solve in 001 | They depend on how the installation is created; they became provisioning requirements (§53.2) |
 
-## 11. Impacto em documentos de referência
+## 11. Impact on reference documents
 
-- [x] referência de stack interna (não incluída neste exemplo): nova §3.16 com ferramentas de
-      engenharia e as dependências de identidade (R1, R6, R8) — **nesta mudança**.
-- [x] da referência de produto interna (não incluída neste exemplo): §4.7 e §48 (versão
-      anterior); §4.1, §4.7, §4.8, §44, §51 e §53.2 na revisão de 2026-10-03; §53.2
-      (requisitos de segurança do provisionamento) na emenda de 2026-10-04.
-- [x] `AGENTS.md`: comandos de build, testes e ambiente local na seção 9 (T077).
+- [x] internal stack reference (not included in this sample): new §3.16 with engineering
+      tooling and identity dependencies (R1, R6, R8) — **in this change**.
+- [x] internal product reference (not included in this sample): §4.7 and §48 (previous
+      version); §4.1, §4.7, §4.8, §44, §51 and §53.2 in the 2026-10-03 revision; §53.2
+      (provisioning security requirements) in the 2026-10-04 amendment.
+- [x] `AGENTS.md`: build, test and local environment commands in section 9 (T077).
 
-## 12. Migração do que já foi implementado (revisão 2026-10-03)
+## 12. Migration of what has already been implemented (revision 2026-10-03)
 
-| Área | Hoje (US1 a US4) | Depois |
+| Area | Today (US1 to US4) | After |
 |---|---|---|
-| Banco | `installation_admin`; `has_installation_scope()` ignora o RLS; `organization.is_default` | Migração 0004: `super_admin`; políticas da seção 4.11; `organization.status`; `membership.status` com `disabled`; `audit_event.installation_scope`; sem organização padrão |
-| `permissions.py` | `INSTALLATION_ADMIN_EXTRA` somado ao perfil Administrador | `SUPER_ADMIN_PERMISSIONS` separado; `effective_permissions` não mistura os dois |
-| `Principal` / `DbContext` | `is_installation_admin` | `is_super_admin`; Super Administrador sem organização ativa |
-| Login e `/me` | erro `sem-organizacao` para quem não tem vínculo | Super Administrador entra sem organização; `/me` informa o tipo de principal |
-| Usuários (US3) | desativar e reativar agem na conta; outras organizações exigem escopo de instalação | por vínculo (seção 4.4); último Administrador por organização (RF-012) |
-| Segurança | `security:manage` do Administrador da instalação | do Super Administrador |
-| CLI `cap-admin` | `bootstrap-admin` cria a organização padrão e o Administrador da instalação | `bootstrap-super-admin` cria só o Super Administrador; `reissue-activation` vale para ele |
-| Studio | menu Usuários e Segurança | menus por tipo de principal (seção 4.11) |
-| Testes | matriz com o Administrador da instalação | matriz com o Super Administrador; testes de US2 e US3 ajustados |
+| Database | `installation_admin`; `has_installation_scope()` bypasses RLS; `organization.is_default` | Migration 0004: `super_admin`; section 4.11 policies; `organization.status`; `membership.status` with `disabled`; `audit_event.installation_scope`; no default organization |
+| `permissions.py` | `INSTALLATION_ADMIN_EXTRA` added to the Administrator role | Separate `SUPER_ADMIN_PERMISSIONS`; `effective_permissions` does not mix the two |
+| `Principal` / `DbContext` | `is_installation_admin` | `is_super_admin`; Super Administrator with no active organization |
+| Login and `/me` | `sem-organizacao` error for anyone without a membership | Super Administrator signs in without an organization; `/me` reports the principal type |
+| Users (US3) | disable and re-enable act on the account; other organizations require installation scope | per membership (section 4.4); last Administrator per organization (RF-012) |
+| Security | `security:manage` of the installation Administrator | of the Super Administrator |
+| `cap-admin` CLI | `bootstrap-admin` creates the default organization and the installation Administrator | `bootstrap-super-admin` creates only the Super Administrator; `reissue-activation` applies to them |
+| Studio | Users and Security menus | menus per principal type (section 4.11) |
+| Tests | matrix with the installation Administrator | matrix with the Super Administrator; US2 and US3 tests adjusted |

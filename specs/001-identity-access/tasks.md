@@ -1,535 +1,541 @@
-# Tarefas: Identidade, Autenticação e Controle de Acesso de Usuários
+# Tasks: User Identity, Authentication and Access Control
 
 - **ID:** 001-identity-access
-- **Spec / Plano:** [spec.md](spec.md) · [plan.md](plan.md) (ambos aprovados em
-  2026-10-03, revisão do Super Administrador)
-- **Status:** Aprovadas <!-- Rascunho | Aprovadas -->
-- **Emenda 2026-10-04:** nova Fase 10 (T093–T099: reautenticação recente e medidor de
-  força), análise (A20, A21) e rastreabilidade (RF-031, RF-032).
-- **Revisão 2026-10-03:** nova Fase 7 (migração para o Super Administrador, T080–T090),
-  US5 reescrita (T060–T064, T091, T092), ajustes em T065 e T066, dependências, análise
-  (A16–A19) e rastreabilidade.
-- **Criado em:** 2026-10-02
-- **Aprovado por / em:** Fulvio Jorge da Silva / 2026-10-04 (emenda ASVS; versões
-  anteriores aprovadas em 2026-10-02 e 2026-10-03)
+- **Spec / Plan:** [spec.md](spec.md) · [plan.md](plan.md) (both approved on
+  2026-10-03, Super Administrator revision)
+- **Status:** Approved <!-- Draft | Approved -->
+- **Amendment 2026-10-04:** new Phase 10 (T093–T099: recent re-authentication and
+  strength meter), analysis (A20, A21) and traceability (RF-031, RF-032).
+- **Revision 2026-10-03:** new Phase 7 (migration to the Super Administrator,
+  T080–T090), US5 rewritten (T060–T064, T091, T092), adjustments to T065 and T066,
+  dependencies, analysis (A16–A19) and traceability.
+- **Created on:** 2026-10-02
+- **Approved by / on:** Fulvio Jorge da Silva / 2026-10-04 (ASVS amendment; previous
+  versions approved on 2026-10-02 and 2026-10-03)
 
-## Formato
+## Format
 
-`- [ ] T001 [P] [US1] Descrição com caminho/do/arquivo`
+`- [ ] T001 [P] [US1] Description with path/to/file`
 
-- `[P]`: pode rodar em paralelo (arquivos diferentes, sem dependência pendente).
-- `[US1]`: história da spec atendida (fases de setup e fundação não levam marcador).
-- Testes vêm antes da implementação correspondente e devem falhar antes dela.
+- `[P]`: can run in parallel (different files, no pending dependency).
+- `[US1]`: spec story served (setup and foundation phases carry no marker).
+- Tests come before the corresponding implementation and must fail before it.
 
-Caminhos abreviados: `cp/` = `services/control-plane/`, `cpkg/` =
+Abbreviated paths: `cp/` = `services/control-plane/`, `cpkg/` =
 `services/control-plane/src/cap_control_plane/`, `studio/` = `apps/studio/`.
 
-## Fase 1 — Setup
+## Phase 1 — Setup
 
-- [x] T001 Criar o monorepo: `pyproject.toml` (workspace uv), `pnpm-workspace.yaml`,
-  `.editorconfig` e as pastas `apps/`, `services/`, `packages/`, `infra/`, `tests/`
-- [x] T002 [P] Criar o projeto do Control Plane em `cp/pyproject.toml` (FastAPI,
-  Pydantic v2, SQLAlchemy 2, Alembic, Authlib, httpx, redis-py, OpenTelemetry) com
-  Ruff (incluindo regras `S`) e mypy estrito; app mínima com `/healthz` em `cpkg/main.py`
-- [x] T003 [P] Criar o Studio em `studio/` (Next.js, TypeScript estrito, Tailwind,
-  shadcn/ui, TanStack Query/Table, i18next, ESLint + Prettier, Vitest) com os tokens do
-  media kit em `studio/src/styles/tokens.css` e tema escuro padrão
-- [x] T004 [P] Configurar Playwright em `tests/e2e/` (`playwright.config.ts` com
-  projetos desktop e celular; helper que lê e-mails no Mailpit)
-- [x] T005 [P] Criar `.gitleaks.toml` e `.pre-commit-config.yaml` (gitleaks, Ruff,
+- [x] T001 Create the monorepo: `pyproject.toml` (uv workspace), `pnpm-workspace.yaml`,
+  `.editorconfig` and the `apps/`, `services/`, `packages/`, `infra/`, `tests/` folders
+- [x] T002 [P] Create the Control Plane project in `cp/pyproject.toml` (FastAPI,
+  Pydantic v2, SQLAlchemy 2, Alembic, Authlib, httpx, redis-py, OpenTelemetry) with
+  Ruff (including `S` rules) and strict mypy; minimal app with `/healthz` in `cpkg/main.py`
+- [x] T003 [P] Create the Studio in `studio/` (Next.js, strict TypeScript, Tailwind,
+  shadcn/ui, TanStack Query/Table, i18next, ESLint + Prettier, Vitest) with the media kit
+  tokens in `studio/src/styles/tokens.css` and dark theme by default
+- [x] T004 [P] Configure Playwright in `tests/e2e/` (`playwright.config.ts` with desktop
+  and mobile projects; helper that reads e-mails from Mailpit)
+- [x] T005 [P] Create `.gitleaks.toml` and `.pre-commit-config.yaml` (gitleaks, Ruff,
   Prettier)
-- [x] T006 Criar `infra/compose/docker-compose.yml` com PostgreSQL 17 (databases `cap` e
-  `keycloak`), Valkey, OpenBao (modo dev, Transit habilitado) e Mailpit
-- [x] T007 Criar `.github/workflows/ci.yml` com jobs: Ruff + mypy + pytest unitário;
-  ESLint + `tsc` + Vitest; gitleaks; Trivy em modo filesystem
+- [x] T006 Create `infra/compose/docker-compose.yml` with PostgreSQL 17 (`cap` and
+  `keycloak` databases), Valkey, OpenBao (dev mode, Transit enabled) and Mailpit
+- [x] T007 Create `.github/workflows/ci.yml` with jobs: Ruff + mypy + unit pytest;
+  ESLint + `tsc` + Vitest; gitleaks; Trivy in filesystem mode
 
-## Fase 2 — Fundação (bloqueia as histórias)
+## Phase 2 — Foundation (blocks the stories)
 
 ### Keycloak
 
-- [x] T008 **Verificação bloqueante R1** da extensão `keycloak-2fa-email-authenticator`:
-  (1) o código é guardado em texto claro na sessão de autenticação? (2) emite eventos de
-  envio, reenvio e falha? (3) o reenvio invalida o código anterior? (4) qual versão do
-  Keycloak é suportada? (5) falhas de código contam para o bloqueio por tentativas do
-  Keycloak (RF-003)? Registrar o resultado em `research.md` (R1). Se algum item
-  falhar sem correção possível, **parar** e levar o plano B para decisão
-- [x] T009 Criar `infra/keycloak/Dockerfile` (imagem oficial na versão definida em T008,
-  build otimizado) e `infra/keycloak/providers.lock` com URL, versão e SHA-256 da
-  extensão; o build falha se o checksum divergir
-- [x] T010 [P] Criar o tema `infra/keycloak/themes/cap/` (login: CSS com os tokens,
-  `messages_pt_BR.properties`; e-mail: templates PT-BR de código, convite/boas-vindas e
-  recuperação de senha)
-- [x] T011 Criar `infra/keycloak/realm/cap-realm.yaml` conforme o plano (§4.9): fluxo
-  senha → código, registro desligado, login por e-mail, brute force, política de senha
-  com lista do SecLists (baixada com checksum), tempos de sessão e de links, eventos por
-  7 dias, clientes `cap-control-plane` e `cap-admin-bridge`; adicionar Keycloak e
-  keycloak-config-cli ao compose
-- [x] T012 [P] Teste de integração do realm em `cp/tests/integration/keycloak/test_realm.py`:
-  login exige código, registro desligado, política de senha recusa senha da lista,
-  bloqueio após 5 falhas (de senha e de código); o realm não tem usuários
-  administrativos além da conta de serviço `cap-admin-bridge`, nem clientes além dos
-  previstos (RF-024)
+- [x] T008 **Blocking R1 check** of the `keycloak-2fa-email-authenticator` extension:
+  (1) is the code stored in clear text in the authentication session? (2) does it emit
+  send, resend and failure events? (3) does a resend invalidate the previous code? (4)
+  which Keycloak version is supported? (5) do code failures count toward Keycloak's
+  attempt lockout (RF-003)? Record the result in `research.md` (R1). If any item fails
+  with no possible fix, **stop** and bring plan B up for decision
+- [x] T009 Create `infra/keycloak/Dockerfile` (official image at the version defined in
+  T008, optimized build) and `infra/keycloak/providers.lock` with the extension's URL,
+  version and SHA-256; the build fails if the checksum does not match
+- [x] T010 [P] Create the `infra/keycloak/themes/cap/` theme (login: CSS with the tokens,
+  `messages_pt_BR.properties`; e-mail: Brazilian Portuguese templates for code,
+  invitation/welcome and password recovery)
+- [x] T011 Create `infra/keycloak/realm/cap-realm.yaml` per the plan (§4.9): password →
+  code flow, registration disabled, login by e-mail, brute force, password policy with
+  the SecLists list (downloaded with checksum), session and link timeouts, events kept
+  for 7 days, `cap-control-plane` and `cap-admin-bridge` clients; add Keycloak and
+  keycloak-config-cli to compose
+- [x] T012 [P] Realm integration test in `cp/tests/integration/keycloak/test_realm.py`:
+  login requires a code, registration disabled, password policy rejects a password from
+  the list, lockout after 5 failures (password and code); the realm has no administrative
+  users other than the `cap-admin-bridge` service account, and no clients beyond the
+  planned ones (RF-024)
 
-### Base do Control Plane
+### Control Plane base
 
-- [x] T013 Criar fixtures de teste em `cp/tests/conftest.py` com Testcontainers
-  (PostgreSQL, Valkey, OpenBao, Mailpit, Keycloak com a imagem e o realm do projeto)
-- [x] T014 [P] Criar `cpkg/core/settings.py`, `cpkg/core/secrets.py` (leitura de segredos
-  e cifra/decifra via OpenBao Transit) e `cpkg/core/telemetry.py` (OpenTelemetry)
-- [x] T015 [P] Teste em `cp/tests/unit/core/test_logging.py`: senha, código, token,
-  link, e-mail e IP completos são redigidos nos logs
-- [x] T016 Criar `cpkg/core/logging.py` (logs estruturados com redação de campos
-  sensíveis)
-- [x] T017 [P] Criar `cpkg/core/email.py` (SMTP com templates PT-BR para os avisos do
-  Control Plane)
+- [x] T013 Create test fixtures in `cp/tests/conftest.py` with Testcontainers
+  (PostgreSQL, Valkey, OpenBao, Mailpit, Keycloak with the project's image and realm)
+- [x] T014 [P] Create `cpkg/core/settings.py`, `cpkg/core/secrets.py` (reading secrets and
+  encrypt/decrypt via OpenBao Transit) and `cpkg/core/telemetry.py` (OpenTelemetry)
+- [x] T015 [P] Test in `cp/tests/unit/core/test_logging.py`: password, code, token, link,
+  full e-mail and full IP are redacted in logs
+- [x] T016 Create `cpkg/core/logging.py` (structured logs with redaction of sensitive
+  fields)
+- [x] T017 [P] Create `cpkg/core/email.py` (SMTP with Brazilian Portuguese templates for
+  Control Plane notices)
 
-### Banco e isolamento
+### Database and isolation
 
-- [x] T018 Teste de integração de RLS em `cp/tests/integration/db/test_rls.py`: sem
-  contexto não lê nada; com organização A não lê `membership`/`invitation` de B;
-  Administrador da instalação lê todas; papel da aplicação não tem `BYPASSRLS`
-- [x] T019 Criar `cpkg/core/db.py` (engine, sessão, `SET LOCAL app.user_id`,
-  `app.organization_id`, `app.is_installation_admin` por transação) e o papel de banco da
-  aplicação
-- [x] T020 Migração Alembic do schema `identity` em `cp/migrations/` (tabelas de
-  [data-model.md](data-model.md), enums, índices, políticas RLS)
+- [x] T018 RLS integration test in `cp/tests/integration/db/test_rls.py`: without context
+  reads nothing; with organization A does not read B's `membership`/`invitation`;
+  installation Administrator reads all; the application role has no `BYPASSRLS`
+- [x] T019 Create `cpkg/core/db.py` (engine, session, `SET LOCAL app.user_id`,
+  `app.organization_id`, `app.is_installation_admin` per transaction) and the
+  application's database role
+- [x] T020 Alembic migration for the `identity` schema in `cp/migrations/` (tables from
+  [data-model.md](data-model.md), enums, indexes, RLS policies)
 
 ### Audit Trail
 
-- [x] T021 [P] Testes unitários da cadeia em `cp/tests/unit/audit/test_chain.py`
-  (JSON canônico, encadeamento, detecção de adulteração)
-- [x] T022 Teste de integração em `cp/tests/integration/audit/test_audit_store.py`:
-  `UPDATE`/`DELETE`/`TRUNCATE` recusados; gravações concorrentes mantêm a cadeia;
-  `details` sem campos proibidos
-- [x] T023 Migração Alembic do schema `audit` (`audit_event`, `audit_event_origin`,
-  `keycloak_event_cursor`, privilégios só `INSERT`/`SELECT`, trigger anti-alteração)
-- [x] T024 Criar `cpkg/audit/chain.py`, `cpkg/audit/writer.py` (gravação serializada
-  com bloqueio consultivo) e `cpkg/audit/verify.py`
-- [x] T025 Configurar o PostgreSQL do compose para registrar no log as recusas do
-  trigger e documentar em `infra/README.md` a regra de alerta que gera
-  `audit.tamper_attempt` (coleta pela observabilidade)
+- [x] T021 [P] Chain unit tests in `cp/tests/unit/audit/test_chain.py`
+  (canonical JSON, chaining, tamper detection)
+- [x] T022 Integration test in `cp/tests/integration/audit/test_audit_store.py`:
+  `UPDATE`/`DELETE`/`TRUNCATE` rejected; concurrent writes keep the chain intact;
+  `details` without forbidden fields
+- [x] T023 Alembic migration for the `audit` schema (`audit_event`, `audit_event_origin`,
+  `keycloak_event_cursor`, `INSERT`/`SELECT`-only privileges, anti-change trigger)
+- [x] T024 Create `cpkg/audit/chain.py`, `cpkg/audit/writer.py` (serialized writes with an
+  advisory lock) and `cpkg/audit/verify.py`
+- [x] T025 Configure the compose PostgreSQL to log trigger rejections and document in
+  `infra/README.md` the alert rule that produces `audit.tamper_attempt` (collected by
+  observability)
 
-### Permissões e sessões
+### Permissions and sessions
 
-- [x] T026 [P] Testes unitários da matriz em `cp/tests/unit/identity/test_permissions.py`:
-  tabela perfil × permissão igual à seção 5.1 da spec, escopos de Administrador,
-  negação por padrão
-- [x] T027 Criar `cpkg/identity/permissions.py` (catálogo, matriz, dependência
-  `require(permission)` que responde `403` e grava `access.denied`), incluindo
-  `costs:read:own` sem uso nesta feature
-- [x] T028 [P] Testes de integração em `cp/tests/integration/identity/test_sessions.py`:
-  criação, renovação até 30 min de inatividade, limite de 12 h, revogação de todas as
-  sessões do usuário, tokens cifrados no Valkey, `sid` guardado como hash
-- [x] T029 Criar `cpkg/identity/sessions.py`
-- [x] T030 [P] Testes de integração do cliente da Admin API em
-  `cp/tests/integration/identity/test_keycloak_admin.py` (criar usuário, ações por
-  e-mail, desabilitar, logout, ler eventos e estado de bloqueio)
-- [x] T031 Criar `cpkg/identity/keycloak_admin.py` (conta de serviço, httpx, timeouts e
-  retentativas)
+- [x] T026 [P] Matrix unit tests in `cp/tests/unit/identity/test_permissions.py`:
+  role × permission table equal to spec section 5.1, Administrator scopes, deny by
+  default
+- [x] T027 Create `cpkg/identity/permissions.py` (catalog, matrix, `require(permission)`
+  dependency that responds `403` and records `access.denied`), including
+  `costs:read:own`, unused in this feature
+- [x] T028 [P] Integration tests in `cp/tests/integration/identity/test_sessions.py`:
+  creation, renewal up to 30 min of inactivity, 12 h limit, revocation of all of a
+  user's sessions, encrypted tokens in Valkey, `sid` stored as a hash
+- [x] T029 Create `cpkg/identity/sessions.py`
+- [x] T030 [P] Admin API client integration tests in
+  `cp/tests/integration/identity/test_keycloak_admin.py` (create user, e-mail actions,
+  disable, logout, read events and lockout status)
+- [x] T031 Create `cpkg/identity/keycloak_admin.py` (service account, httpx, timeouts and
+  retries)
 
-## Fase 3 — US1: Login com segundo fator por e-mail (P1) — MVP
+## Phase 3 — US1: Login with an e-mail second factor (P1) — MVP
 
-**Objetivo:** usuário cadastrado entra com senha e código, usa a plataforma e sai.
-**Teste independente:** spec, US1.
+**Goal:** a registered user signs in with password and code, uses the platform and signs
+out. **Independent test:** spec, US1.
 
-### Testes
+### Tests
 
-- [x] T032 [P] [US1] Testes de integração do BFF em
-  `cp/tests/integration/identity/test_bff_auth.py`: `state` e PKCE, cookie `__Host-`
-  com `HttpOnly`/`Secure`/`SameSite=Lax`, CSRF recusado sem cabeçalho, logout,
-  back-channel logout encerra a sessão do BFF; usuário lista as próprias sessões e
-  encerra uma delas (RF-006)
-- [x] T033 [P] [US1] Testes de integração do worker em
-  `cp/tests/integration/audit/test_keycloak_ingestor.py`: importa eventos sem duplicar,
-  mapeia para o catálogo, troca de senha encerra sessões do BFF e envia aviso; com o
-  SMTP indisponível, o login não é concluído e o Keycloak registra o erro no log
-- [x] T034 [P] [US1] E2E em `tests/e2e/login.spec.ts`: login com código lido no Mailpit;
-  código incorreto, expirado e reenviado; bloqueio após 5 falhas; mensagem genérica;
-  logout; inatividade (tempo curto no ambiente de teste); recuperação de senha com aviso
-  e sessões encerradas; viewport de celular
-- [x] T035 [P] [US1] Teste de enumeração em `cp/tests/integration/identity/test_enumeration.py`:
-  mesma resposta e tempo semelhante para e-mail existente e inexistente (login e
-  recuperação)
+- [x] T032 [P] [US1] BFF integration tests in
+  `cp/tests/integration/identity/test_bff_auth.py`: `state` and PKCE, `__Host-` cookie
+  with `HttpOnly`/`Secure`/`SameSite=Lax`, CSRF rejected without the header, logout,
+  back-channel logout ends the BFF session; the user lists their own sessions and ends
+  one of them (RF-006)
+- [x] T033 [P] [US1] Worker integration tests in
+  `cp/tests/integration/audit/test_keycloak_ingestor.py`: imports events without
+  duplicates, maps them to the catalog, a password change ends BFF sessions and sends a
+  notice; with SMTP unavailable, the login does not complete and Keycloak logs the error
+- [x] T034 [P] [US1] E2E in `tests/e2e/login.spec.ts`: login with the code read from
+  Mailpit; wrong, expired and resent code; lockout after 5 failures; generic message;
+  logout; inactivity (short timeout in the test environment); password recovery with
+  notice and sessions ended; mobile viewport
+- [x] T035 [P] [US1] Enumeration test in `cp/tests/integration/identity/test_enumeration.py`:
+  same response and similar timing for existing and non-existing e-mails (login and
+  recovery)
 
-### Implementação
+### Implementation
 
-- [x] T036 [US1] Criar `cpkg/identity/oidc.py` (Authlib, Authorization Code + PKCE) e
+- [x] T036 [US1] Create `cpkg/identity/oidc.py` (Authlib, Authorization Code + PKCE) and
   `cpkg/identity/api/auth.py` (`/auth/login`, `/auth/callback`, `/auth/logout`,
   `/auth/backchannel-logout`, `/auth/password`)
-- [x] T037 [US1] Criar o middleware de sessão e CSRF em `cpkg/identity/middleware.py` e
-  a rota `GET /me` em `cpkg/identity/api/me.py`
-- [x] T038 [US1] Criar `cpkg/audit/keycloak_ingestor.py` (leitura a cada 5 s, cursor,
-  deduplicação, mapeamento; em troca de senha remove sessões do BFF e envia aviso;
-  métricas de logins, falhas e bloqueios; alerta de atraso do cursor — RNF-004)
-- [x] T039 [US1] Criar `GET /me/sessions` e `DELETE /me/sessions/{id}` em
+- [x] T037 [US1] Create the session and CSRF middleware in `cpkg/identity/middleware.py`
+  and the `GET /me` route in `cpkg/identity/api/me.py`
+- [x] T038 [US1] Create `cpkg/audit/keycloak_ingestor.py` (polls every 5 s, cursor,
+  deduplication, mapping; on password change removes BFF sessions and sends a notice;
+  login, failure and lockout metrics; cursor lag alert — RNF-004)
+- [x] T039 [US1] Create `GET /me/sessions` and `DELETE /me/sessions/{id}` in
   `cpkg/identity/api/me.py`
-- [x] T040 [US1] No Studio: `studio/src/lib/auth/` (consulta a `/me`, envio do token
-  CSRF, redirecionamento ao login), layout protegido, botão Sair, link "Trocar senha" e
-  tela `studio/src/app/(app)/conta/sessoes/`
-- [x] T041 [US1] Gerar o cliente em `packages/api-client/` (orval) e adicionar ao CI a
-  verificação de divergência com o OpenAPI
+- [x] T040 [US1] In the Studio: `studio/src/lib/auth/` (query `/me`, send the CSRF token,
+  redirect to login), protected layout, Sign out button, "Change password" link and the
+  `studio/src/app/(app)/conta/sessoes/` screen
+- [x] T041 [US1] Generate the client in `packages/api-client/` (orval) and add to CI the
+  drift check against the OpenAPI
 
-**Checkpoint:** US1 funciona e é testável sozinha (usuário criado por fixture).
+**Checkpoint:** US1 works and is testable on its own (user created by a fixture).
 
-## Fase 4 — US2: Primeiro acesso do Administrador inicial (P1)
+## Phase 4 — US2: First access of the initial Administrator (P1)
 
-### Testes
+### Tests
 
-- [x] T042 [P] [US2] Teste de integração em `cp/tests/integration/cli/test_bootstrap.py`:
-  `bootstrap-admin` cria a organização padrão, o usuário no Keycloak, o vínculo e o
-  escopo de instalação e envia o e-mail; `reissue-activation` com e sem novo e-mail;
-  eventos com `actor_kind = support`
-- [x] T043 [P] [US2] E2E em `tests/e2e/activation.spec.ts`: link de boas-vindas → define
-  senha → login com código → tela inicial; link já usado ou expirado é recusado
+- [x] T042 [P] [US2] Integration test in `cp/tests/integration/cli/test_bootstrap.py`:
+  `bootstrap-admin` creates the default organization, the Keycloak user, the membership
+  and the installation scope and sends the e-mail; `reissue-activation` with and without
+  a new e-mail; events with `actor_kind = support`
+- [x] T043 [P] [US2] E2E in `tests/e2e/activation.spec.ts`: welcome link → set password →
+  login with code → home screen; an already used or expired link is rejected
 
-### Implementação
+### Implementation
 
-- [x] T044 [US2] Criar `cpkg/cli/cap_admin.py` (`bootstrap-admin`,
-  `reissue-activation`, com número do chamado obrigatório no segundo)
-- [x] T045 [US2] No callback de login, ativar usuário e vínculos `pending` e gravar
-  `user.activated`
+- [x] T044 [US2] Create `cpkg/cli/cap_admin.py` (`bootstrap-admin`,
+  `reissue-activation`, with a mandatory ticket number for the latter)
+- [x] T045 [US2] In the login callback, activate the user and `pending` memberships and
+  record `user.activated`
 
-**Checkpoint:** instalação nova entrega o Administrador inicial funcionando.
+**Checkpoint:** a new installation delivers a working initial Administrator.
 
-## Fase 5 — US3: Gestão de usuários pelo Administrador (P1)
+## Phase 5 — US3: User management by the Administrator (P1)
 
-### Testes
+### Tests
 
-- [x] T046 [P] [US3] Testes de integração em `cp/tests/integration/identity/test_users.py`:
-  convite de pessoa nova e de pessoa já cadastrada; revogação de convite; mudança de
-  perfil vale na próxima requisição; desativação revoga sessões em até 60 s;
-  reativação; último Administrador da instalação (inclusive com duas operações
-  simultâneas); edição concorrente responde `412`; listagem com filtros
-- [x] T047 [P] [US3] Testes de integração em `cp/tests/integration/identity/test_email_change.py`:
-  confirmação pelo novo e-mail, sessões encerradas, aviso ao antigo, token de uso
-  único e expirado
-- [x] T048 [P] [US3] Testes de integração em `cp/tests/integration/identity/test_security_settings.py`:
-  leitura e gravação no realm, incluindo a validade de convites e links de ativação
-  (RF-010); limites mínimos recusados (RF-007)
-- [x] T049 [P] [US3] E2E em `tests/e2e/user-management.spec.ts`: Administrador convida →
-  pessoa ativa → Administrador muda perfil → desativa → pessoa perde acesso
+- [x] T046 [P] [US3] Integration tests in `cp/tests/integration/identity/test_users.py`:
+  invitation of a new person and of an already registered person; invitation
+  revocation; role change takes effect on the next request; deactivation revokes
+  sessions within 60 s; reactivation; last installation Administrator (including two
+  simultaneous operations); concurrent edit responds `412`; filtered listing
+- [x] T047 [P] [US3] Integration tests in `cp/tests/integration/identity/test_email_change.py`:
+  confirmation via the new e-mail, sessions ended, notice to the old one, single-use and
+  expired token
+- [x] T048 [P] [US3] Integration tests in `cp/tests/integration/identity/test_security_settings.py`:
+  reading and writing the realm, including the validity of invitations and activation
+  links (RF-010); minimum limits rejected (RF-007)
+- [x] T049 [P] [US3] E2E in `tests/e2e/user-management.spec.ts`: Administrator invites →
+  person activates → Administrator changes role → disables → person loses access
 
-### Implementação
+### Implementation
 
-- [x] T050 [US3] Criar `cpkg/identity/service/users.py` e `cpkg/identity/service/invitations.py`
-  (regras de convite, ativação, desativação, último Administrador, trava otimista)
-- [x] T051 [US3] Criar `cpkg/identity/service/email_change.py`
-- [x] T052 [US3] Criar as rotas de usuários, convites e troca de e-mail em
+- [x] T050 [US3] Create `cpkg/identity/service/users.py` and `cpkg/identity/service/invitations.py`
+  (invitation, activation, deactivation, last Administrator and optimistic lock rules)
+- [x] T051 [US3] Create `cpkg/identity/service/email_change.py`
+- [x] T052 [US3] Create the user, invitation and e-mail change routes in
   `cpkg/identity/api/users.py`
-- [x] T053 [US3] Criar `cpkg/identity/api/security_settings.py`
-- [x] T054 [US3] No Studio: `studio/src/app/(app)/admin/usuarios/` (lista com filtros,
-  convite, detalhe, alterar perfil, desativar/reativar, trocar e-mail, encerrar
-  sessões) e `studio/src/app/(app)/admin/seguranca/`
+- [x] T053 [US3] Create `cpkg/identity/api/security_settings.py`
+- [x] T054 [US3] In the Studio: `studio/src/app/(app)/admin/usuarios/` (filtered list,
+  invitation, detail, change role, disable/re-enable, change e-mail, end sessions) and
+  `studio/src/app/(app)/admin/seguranca/`
 
-**Checkpoint:** Administrador gerencia a equipe sem o fornecedor.
+**Checkpoint:** the Administrator manages the team without the vendor.
 
-## Fase 6 — US4: Acesso controlado por perfil (P1)
+## Phase 6 — US4: Role-based access (P1)
 
-### Testes
+### Tests
 
-- [x] T055 [P] [US4] Teste orientado por tabela em
-  `cp/tests/integration/identity/test_route_permissions.py`: para cada rota da feature e
-  cada perfil, resposta esperada (`2xx` ou `403`) e `access.denied` gravado; falha se
-  houver rota sem permissão declarada; nenhum perfil ou rota dá acesso ao fornecedor
-  (RF-024)
-- [x] T056 [P] [US4] Teste de componente em `studio/src/components/nav/nav.test.tsx`:
-  menus exibidos conforme as permissões de `/me`
-- [x] T057 [P] [US4] E2E em `tests/e2e/profiles.spec.ts`: Business Analyst não vê a
-  administração e recebe `403` ao chamar a API diretamente
+- [x] T055 [P] [US4] Table-driven test in
+  `cp/tests/integration/identity/test_route_permissions.py`: for each route of the
+  feature and each role, expected response (`2xx` or `403`) and `access.denied`
+  recorded; fails if any route has no declared permission; no role or route grants
+  access to the vendor (RF-024)
+- [x] T056 [P] [US4] Component test in `studio/src/components/nav/nav.test.tsx`: menus
+  shown according to the `/me` permissions
+- [x] T057 [P] [US4] E2E in `tests/e2e/profiles.spec.ts`: a Business Analyst does not see
+  administration and gets `403` when calling the API directly
 
-### Implementação
+### Implementation
 
-- [x] T058 [US4] Garantir `require()` em todas as rotas e registrar no CI o teste de
-  rota sem permissão
-- [x] T059 [US4] Navegação do Studio guiada pelas permissões em
-  `studio/src/components/nav/`
+- [x] T058 [US4] Ensure `require()` on every route and register in CI the test for routes
+  without permission
+- [x] T059 [US4] Permission-driven Studio navigation in `studio/src/components/nav/`
 
-**Checkpoint:** todas as histórias P1 entregues (MVP).
+**Checkpoint:** all P1 stories delivered (MVP).
 
-## Fase 7 — Migração para o Super Administrador (revisão 2026-10-03; bloqueia a US5)
+## Phase 7 — Migration to the Super Administrator (revision 2026-10-03; blocks US5)
 
-Adapta o que US1–US4 entregaram (plano, seção 12). Ao fim desta fase, o Administrador da
-instalação não existe mais e o Super Administrador não lê nada de dentro das
-organizações.
+Adapts what US1–US4 delivered (plan, section 12). At the end of this phase, the
+installation Administrator no longer exists and the Super Administrator reads nothing
+inside organizations.
 
-### Testes
+### Tests
 
-- [x] T080 [P] Testes de unidade em `cp/tests/unit/identity/test_permissions.py` e
-  `cp/tests/unit/identity/test_route_permissions.py`: permissões de instalação
-  (`SUPER_ADMIN_PERMISSIONS`) e de organização são disjuntas; o Super Administrador não
-  recebe nenhuma permissão de organização; nenhum perfil recebe permissão de
-  instalação; toda permissão pertence a algum perfil ou ao Super Administrador
+- [x] T080 [P] Unit tests in `cp/tests/unit/identity/test_permissions.py` and
+  `cp/tests/unit/identity/test_route_permissions.py`: installation permissions
+  (`SUPER_ADMIN_PERMISSIONS`) and organization permissions are disjoint; the Super
+  Administrator receives no organization permission; no role receives an installation
+  permission; every permission belongs to some role or to the Super Administrator
   (RF-016, RF-024, RF-028)
-- [x] T081 [P] Teste de integração em `cp/tests/integration/identity/test_super_admin_rls.py`:
-  consultas direto no banco com o contexto do Super Administrador veem todas as
-  organizações, só vínculos e convites de perfil `administrator`, só pessoas que são
-  Administradores ou Super Administradores e nenhuma troca de e-mail; inserir vínculo
-  de outro perfil é recusado; o *trigger* recusa vínculo para Super Administrador e
-  Super Administrador para quem tem vínculo ativo (RF-028, RNF-001)
-- [x] T082 [P] Teste de integração em `cp/tests/integration/test_migration_0004.py`: a
-  partir do estado da 0003 com Administrador da instalação, vínculos e organização
-  padrão, a 0004 cria `super_admin`, marca os vínculos dele como `removed`, grava
-  `super_admin.converted`, deixa as organizações existentes `active`, remove
-  `is_default` e mantém a cadeia de auditoria válida
-- [x] T083 [P] Ajustar os testes existentes ao novo modelo: `tests/support/people.py`
+- [x] T081 [P] Integration test in `cp/tests/integration/identity/test_super_admin_rls.py`:
+  queries run directly in the database with the Super Administrator context see all
+  organizations, only memberships and invitations with the `administrator` role, only
+  people who are Administrators or Super Administrators and no e-mail change; inserting a
+  membership with another role is rejected; the *trigger* rejects a membership for a
+  Super Administrator and a Super Administrator for someone with an active membership
+  (RF-028, RNF-001)
+- [x] T082 [P] Integration test in `cp/tests/integration/test_migration_0004.py`: starting
+  from the 0003 state with an installation Administrator, memberships and a default
+  organization, 0004 creates `super_admin`, marks their memberships as `removed`, records
+  `super_admin.converted`, leaves existing organizations `active`, drops `is_default` and
+  keeps the audit chain valid
+- [x] T083 [P] Adjust the existing tests to the new model: `tests/support/people.py`
   (`create_person(super_admin=...)`), `tests/support/seed_person.py` (`--super-admin`),
-  `test_activation.py` (US2 cria o Super Administrador inicial, sem organização),
-  `test_users.py` (desativação por vínculo, último Administrador por organização),
-  `test_security_settings.py` (só Super Administrador), a matriz de
-  `test_route_permissions.py` com o Super Administrador como principal (`403` e
-  `access.denied` em toda rota de organização) e os E2E `activation.spec.ts`,
-  `user-management.spec.ts` e `profiles.spec.ts`
+  `test_activation.py` (US2 creates the initial Super Administrator, with no
+  organization), `test_users.py` (per-membership deactivation, last Administrator per
+  organization), `test_security_settings.py` (Super Administrator only), the
+  `test_route_permissions.py` matrix with the Super Administrator as principal (`403` and
+  `access.denied` on every organization route) and the E2E `activation.spec.ts`,
+  `user-management.spec.ts` and `profiles.spec.ts`
 
-### Implementação
+### Implementation
 
-- [x] T084 Migração `cp/migrations/versions/0004_super_admin.py` conforme
-  [data-model.md](data-model.md): `super_admin` (de `installation_admin`), função
-  `identity.is_super_admin()` e políticas por tabela no lugar de
-  `has_installation_scope()`, *triggers* do RF-028, `organization.status` e colunas de
-  situação, `membership.status` com `disabled`, `audit_event.installation_scope`,
-  remoção de `is_default` e conversão dos dados existentes
-- [x] T085 Permissões e principal: `cpkg/identity/permissions.py`
-  (`SUPER_ADMIN_PERMISSIONS`, `effective_permissions` sem mistura), `cpkg/core/db.py`
-  (`DbContext.is_super_admin`), `cpkg/identity/authz.py` e `cpkg/identity/directory.py`
-  (Super Administrador sem organização; organização precisa estar `active` na
-  revalidação de cada requisição)
-- [x] T086 Login e `/me`: Super Administrador entra sem organização ativa;
-  `GET /me` informa o tipo de principal; regenerar o OpenAPI e o cliente TypeScript
-- [x] T087 Usuários (US3) por vínculo: `cpkg/identity/service/users.py` e
-  `cpkg/identity/api/users.py` com desativação e reativação do vínculo (conta só sem
-  outro vínculo ativo), último Administrador por organização com travamento (RF-012),
-  troca de e-mail recusada (`409`) para quem pertence a outras organizações
-- [x] T088 Auditoria: `installation_scope` em `cpkg/audit/chain.py` e
-  `cpkg/audit/writer.py` (entra no hash); eventos do Super Administrador gravam a
-  organização afetada e `installation_scope = true`
-- [x] T089 CLI: `cap-admin bootstrap-super-admin` (sem organização) e
-  `reissue-activation` para Super Administrador, em `cpkg/cli/cap_admin.py`; atualizar
+- [x] T084 Migration `cp/migrations/versions/0004_super_admin.py` per
+  [data-model.md](data-model.md): `super_admin` (from `installation_admin`), the
+  `identity.is_super_admin()` function and per-table policies replacing
+  `has_installation_scope()`, the RF-028 *triggers*, `organization.status` and status
+  columns, `membership.status` with `disabled`, `audit_event.installation_scope`, removal
+  of `is_default` and conversion of existing data
+- [x] T085 Permissions and principal: `cpkg/identity/permissions.py`
+  (`SUPER_ADMIN_PERMISSIONS`, `effective_permissions` without mixing), `cpkg/core/db.py`
+  (`DbContext.is_super_admin`), `cpkg/identity/authz.py` and `cpkg/identity/directory.py`
+  (Super Administrator without an organization; the organization must be `active` in the
+  per-request revalidation)
+- [x] T086 Login and `/me`: the Super Administrator signs in without an active
+  organization; `GET /me` reports the principal type; regenerate the OpenAPI and the
+  TypeScript client
+- [x] T087 Users (US3) per membership: `cpkg/identity/service/users.py` and
+  `cpkg/identity/api/users.py` with membership deactivation and reactivation (account
+  only when there is no other active membership), last Administrator per organization
+  with locking (RF-012), e-mail change rejected (`409`) for someone who belongs to other
+  organizations
+- [x] T088 Audit: `installation_scope` in `cpkg/audit/chain.py` and
+  `cpkg/audit/writer.py` (part of the hash); Super Administrator events record the
+  affected organization and `installation_scope = true`
+- [x] T089 CLI: `cap-admin bootstrap-super-admin` (no organization) and
+  `reissue-activation` for the Super Administrator, in `cpkg/cli/cap_admin.py`; update
   `infra/README.md`
-- [x] T090 Studio: menus por tipo de principal (Organizações, Super Administradores e
-  Segurança para o Super Administrador), cabeçalho com "Super Administrador" no lugar da
-  organização, página inicial do Super Administrador; atualizar
+- [x] T090 Studio: menus per principal type (Organizations, Super Administrators and
+  Security for the Super Administrator), header showing "Super Administrator" in place of
+  the organization, Super Administrator home page; update
   `studio/src/components/nav/nav.test.tsx`
 
-**Checkpoint:** todos os testes existentes passam no novo modelo, e o Super
-Administrador recebe `403` em toda rota de organização.
+**Checkpoint:** all existing tests pass on the new model, and the Super Administrator
+gets `403` on every organization route.
 
-## Fase 8 — US5: Gestão de organizações pelo Super Administrador (P1)
+## Phase 8 — US5: Organization management by the Super Administrator (P1)
 
-### Testes
+### Tests
 
-- [x] T060 [P] [US5] Testes de integração em `cp/tests/integration/identity/test_organizations.py`:
-  convite de organização para pessoa nova e para pessoa já cadastrada (organização
-  `pending`, ativa quando o Administrador ativa o acesso); só o Super Administrador
-  cria (Administrador de organização recebe `403` e `access.denied`); lista com
-  filtros; renomear com `If-Match`; reenviar e cancelar convite pendente; convite para
-  e-mail de Super Administrador recusado; convidar, desativar e reativar Administrador,
-  com `409` para o último ativo; suspender (sessões da organização removidas, acesso
-  negado na próxima requisição, CS-009) e reativar (novo login); pessoa com outra
-  organização ativa perde só a suspensa; troca de organização só para vínculo válido e
-  organização ativa
-- [x] T061 [P] [US5] Teste de isolamento em `cp/tests/integration/identity/test_cross_org.py`:
-  para cada rota, usuário de A acessando recurso de B → `404`/`403` e `access.denied`
-- [x] T091 [P] [US5] Testes de integração em `cp/tests/integration/identity/test_super_admins.py`:
-  convidar, desativar e reativar Super Administrador; `409` para o último ativo
-  (RF-012, RF-030); convite recusado para e-mail com vínculo em organização (RF-028)
-- [x] T062 [P] [US5] E2E em `tests/e2e/specs/organizations.spec.ts`: o Super
-  Administrador convida uma organização; o convidado ativa pelo e-mail (Mailpit) e
-  entra como Administrador; o Super Administrador vê a organização ativa e o seu
-  Administrador, recebe "Sem permissão" em Usuários e suspende a organização, e o
-  Administrador perde o acesso; pessoa com duas organizações troca pelo seletor e vê só
-  os dados da ativa; viewport de celular
+- [x] T060 [P] [US5] Integration tests in `cp/tests/integration/identity/test_organizations.py`:
+  organization invitation for a new person and for an already registered person
+  (`pending` organization, active when the Administrator activates access); only the
+  Super Administrator creates (an organization Administrator gets `403` and
+  `access.denied`); filtered list; rename with `If-Match`; resend and cancel a pending
+  invitation; invitation to a Super Administrator's e-mail rejected; invite, disable and
+  re-enable an Administrator, with `409` for the last active one; suspend (organization
+  sessions removed, access denied on the next request, CS-009) and reactivate (new
+  login); a person with another active organization loses only the suspended one;
+  organization switch only for a valid membership and an active organization
+- [x] T061 [P] [US5] Isolation test in `cp/tests/integration/identity/test_cross_org.py`:
+  for each route, a user from A accessing a resource of B → `404`/`403` and
+  `access.denied`
+- [x] T091 [P] [US5] Integration tests in `cp/tests/integration/identity/test_super_admins.py`:
+  invite, disable and re-enable a Super Administrator; `409` for the last active one
+  (RF-012, RF-030); invitation rejected for an e-mail with an organization membership
+  (RF-028)
+- [x] T062 [P] [US5] E2E in `tests/e2e/specs/organizations.spec.ts`: the Super
+  Administrator invites an organization; the invitee activates via e-mail (Mailpit) and
+  signs in as Administrator; the Super Administrator sees the active organization and its
+  Administrator, gets "No permission" on Users and suspends the organization, and the
+  Administrator loses access; a person with two organizations switches via the selector
+  and sees only the active one's data; mobile viewport
 
-### Implementação
+### Implementation
 
-- [x] T063 [US5] Criar `cpkg/identity/service/organizations.py` e
-  `cpkg/identity/api/organizations.py` (rotas de organizações e dos seus
-  Administradores do contrato) e `PUT /me/active-organization`
-- [x] T092 [US5] Criar `cpkg/identity/service/super_admins.py` e
+- [x] T063 [US5] Create `cpkg/identity/service/organizations.py` and
+  `cpkg/identity/api/organizations.py` (the contract's organization and organization
+  Administrator routes) and `PUT /me/active-organization`
+- [x] T092 [US5] Create `cpkg/identity/service/super_admins.py` and
   `cpkg/identity/api/super_admins.py`
-- [x] T064 [US5] No Studio: `studio/src/components/org-switcher/` (só aparece com mais
-  de uma organização), `studio/src/app/(app)/admin/organizacoes/` (lista, convite,
-  detalhe com Administradores, suspender e reativar) e
+- [x] T064 [US5] In the Studio: `studio/src/components/org-switcher/` (only shown with
+  more than one organization), `studio/src/app/(app)/admin/organizacoes/` (list,
+  invitation, detail with Administrators, suspend and reactivate) and
   `studio/src/app/(app)/admin/super-administradores/`
 
-**Checkpoint:** todas as histórias P1 da spec revisada entregues.
+**Checkpoint:** all P1 stories of the revised spec delivered.
 
-## Fase 9 — US6: Auditoria de acessos (P2)
+## Phase 9 — US6: Access auditing (P2)
 
-### Testes
+### Tests
 
-- [x] T065 [P] [US6] Testes de integração em `cp/tests/integration/audit/test_audit_api.py`:
-  filtros; o Administrador vê os eventos da organização, inclusive as ações do Super
-  Administrador sobre ela; o Super Administrador vê só os de `installation_scope` ou
-  feitos por Super Administradores; exportação CSV grava `audit.exported`
-- [x] T066 [P] [US6] Teste de cobertura em `cp/tests/unit/audit/test_event_catalog.py`
-  (estático: não precisa de serviços):
-  cada tipo de [contracts/audit-events.md](contracts/audit-events.md) é produzido por
-  algum cenário, com os campos do RF-022 (CS-006)
-- [x] T067 [P] [US6] Teste de integração do expurgo em
-  `cp/tests/integration/audit/test_origin_purge.py`: remove origem antiga, grava
-  `audit.origin_purged`, cadeia continua válida
+- [x] T065 [P] [US6] Integration tests in `cp/tests/integration/audit/test_audit_api.py`:
+  filters; the Administrator sees the organization's events, including the Super
+  Administrator's actions on it; the Super Administrator sees only those with
+  `installation_scope` or performed by Super Administrators; CSV export records
+  `audit.exported`
+- [x] T066 [P] [US6] Coverage test in `cp/tests/unit/audit/test_event_catalog.py`
+  (static: needs no services):
+  each type in [contracts/audit-events.md](contracts/audit-events.md) is produced by
+  some scenario, with the RF-022 fields (CS-006)
+- [x] T067 [P] [US6] Purge integration test in
+  `cp/tests/integration/audit/test_origin_purge.py`: removes old origin data, records
+  `audit.origin_purged`, the chain stays valid
 
-### Implementação
+### Implementation
 
-- [x] T068 [US6] Criar `cpkg/audit/api.py` (consulta e exportação)
-- [x] T069 [US6] Criar `cpkg/audit/purge.py` (rotina diária no processo do worker) e o
-  comando `cap-admin audit verify`
-- [x] T070 [US6] No Studio: `studio/src/app/(app)/admin/auditoria/` (filtros, tabela,
-  exportação)
+- [x] T068 [US6] Create `cpkg/audit/api.py` (query and export)
+- [x] T069 [US6] Create `cpkg/audit/purge.py` (daily routine in the worker process) and
+  the `cap-admin audit verify` command
+- [x] T070 [US6] In the Studio: `studio/src/app/(app)/admin/auditoria/` (filters, table,
+  export)
 
-## Fase final — Acabamento
+## Final phase — Polish
 
-- [x] T071 [P] Teste em `cp/tests/integration/test_no_secret_leak.py` e etapa do CI que
-  varre os logs da execução E2E em busca de senhas, códigos, tokens e links (CS-007)
-- [x] T072 [P] Criar o comando `cap-admin anonymize-user` (pedido de esquecimento,
-  LGPD) com teste em `cp/tests/integration/cli/test_anonymize.py`
-- [x] T073 [P] Criar `services/control-plane/Dockerfile` e `apps/studio/Dockerfile`;
-  adicionar ao CI o build e a varredura Trivy das três imagens (Control Plane, Studio,
-  Keycloak), falhando com vulnerabilidade alta ou crítica sem mitigação registrada
-- [x] T074 Adicionar ao CI o job E2E (sobe o compose, roda Playwright desktop e celular)
-- [x] T075 Medir as metas do RNF-007 com `tests/e2e/perf/login-timing.spec.ts` (p95 de
-  50 logins: tempo de cada etapa, chegada do e-mail com o código, troca de organização)
-  e registrar o resultado no PR
-- [x] T076 Preencher `specs/001-identity-access/checklists/asvs-l2.md` (capítulos V2, V3
-  e V4 do OWASP ASVS)
-- [x] T077 Atualizar `AGENTS.md` (seção 9: comandos de instalação, ambiente local,
-  testes e lint) e o estado do projeto
-- [x] T078 [P] Teste de contrato em `cp/tests/contract/test_identity_contract.py`: toda
-  rota de [contracts/identity-api.md](contracts/identity-api.md) existe no OpenAPI com o
-  método e a permissão indicados, e o OpenAPI não tem rota fora do contrato
-- [ ] T079 Roteiro de validação com usuários em
-  `specs/001-identity-access/checklists/validacao-usuario.md` para CS-001, CS-002 e
-  CS-003 (tempos de ativação, convite e login medidos com pessoas reais), executado na
-  etapa de conclusão
+- [x] T071 [P] Test in `cp/tests/integration/test_no_secret_leak.py` and a CI step that
+  scans the E2E run logs for passwords, codes, tokens and links (CS-007)
+- [x] T072 [P] Create the `cap-admin anonymize-user` command (right-to-be-forgotten
+  request, LGPD) with a test in `cp/tests/integration/cli/test_anonymize.py`
+- [x] T073 [P] Create `services/control-plane/Dockerfile` and `apps/studio/Dockerfile`;
+  add to CI the build and Trivy scan of the three images (Control Plane, Studio,
+  Keycloak), failing on high or critical vulnerabilities without a recorded mitigation
+- [x] T074 Add the E2E job to CI (starts compose, runs Playwright desktop and mobile)
+- [x] T075 Measure the RNF-007 targets with `tests/e2e/perf/login-timing.spec.ts` (p95 of
+  50 logins: time of each step, arrival of the code e-mail, organization switch) and
+  record the result in the PR
+- [x] T076 Fill in `specs/001-identity-access/checklists/asvs-l2.md` (OWASP ASVS chapters
+  V2, V3 and V4)
+- [x] T077 Update `AGENTS.md` (section 9: install, local environment, test and lint
+  commands) and the project status
+- [x] T078 [P] Contract test in `cp/tests/contract/test_identity_contract.py`: every route
+  in [contracts/identity-api.md](contracts/identity-api.md) exists in the OpenAPI with the
+  stated method and permission, and the OpenAPI has no route outside the contract
+- [ ] T079 User validation script in
+  `specs/001-identity-access/checklists/user-validation.md` for CS-001, CS-002 and
+  CS-003 (activation, invitation and login times measured with real people), run at the
+  completion stage
 
-## Fase 10 — Reautenticação recente e medidor de força (emenda 2026-10-04)
+## Phase 10 — Recent re-authentication and strength meter (amendment 2026-10-04)
 
-### Testes
+### Tests
 
-- [x] T093 [P] Teste unitário em `cp/tests/unit/identity/test_route_permissions.py`: as
-  rotas do RF-031 (lista no contrato) declaram `require_recent_auth`, e nenhuma outra
-- [x] T094 [P] Testes de integração em `cp/tests/integration/identity/test_recent_auth.py`:
-  ação sensível com login há mais de 15 min responde `401 reauth_required` e não muda
-  nada; com login recente, segue; `GET /auth/login?reauth=1` envia `prompt=login` e
-  `max_age=0` e substitui a sessão anterior; `GET /auth/password` envia `max_age=0`;
-  renovar tokens não muda o `auth_time`
-- [x] T095 [P] Teste de componente em `studio/src/lib/auth/reauth.test.ts`: o erro
-  `reauth_required` leva à nova autenticação com a tela atual como retorno
+- [x] T093 [P] Unit test in `cp/tests/unit/identity/test_route_permissions.py`: the
+  RF-031 routes (list in the contract) declare `require_recent_auth`, and no other does
+- [x] T094 [P] Integration tests in `cp/tests/integration/identity/test_recent_auth.py`:
+  a sensitive action with a login older than 15 min responds `401 reauth_required` and
+  changes nothing; with a recent login, it proceeds; `GET /auth/login?reauth=1` sends
+  `prompt=login` and `max_age=0` and replaces the previous session; `GET /auth/password`
+  sends `max_age=0`; refreshing tokens does not change `auth_time`
+- [x] T095 [P] Component test in `studio/src/lib/auth/reauth.test.ts`: the
+  `reauth_required` error leads to the new authentication with the current screen as the
+  return target
 
-### Implementação
+### Implementation
 
-- [x] T096 `auth_time` na sessão (`cpkg/identity/sessions.py`, callback), dependência
-  `require_recent_auth` em `cpkg/identity/authz.py`, `reauth=1` e `max_age=0` em
-  `cpkg/identity/oidc.py` e `cpkg/identity/api/auth.py`; aplicar nas rotas do RF-031 e
-  marcar no contrato `contracts/identity-api.md`
-- [x] T097 Studio: tratamento de `reauth_required` no cliente e na interface (mensagem ao
-  voltar); regenerar o cliente
-- [x] T098 Medidor de força no tema `cap` do Keycloak (`infra/keycloak/themes/cap/`), nas
-  telas de definir e trocar senha; E2E em `tests/e2e/specs/activation.spec.ts` confere o
-  indicador; teste em `cp/tests/unit/test_keycloak_theme.py`
-- [x] T099 Atualizar `checklists/asvs-l2.md` (2.1.6, 2.1.8, 3.7.1 e pendências) e o E2E
-  `tests/e2e/specs/user-management.spec.ts` com uma ação sensível depois da nova
-  autenticação
+- [x] T096 `auth_time` in the session (`cpkg/identity/sessions.py`, callback),
+  `require_recent_auth` dependency in `cpkg/identity/authz.py`, `reauth=1` and
+  `max_age=0` in `cpkg/identity/oidc.py` and `cpkg/identity/api/auth.py`; apply to the
+  RF-031 routes and mark them in the `contracts/identity-api.md` contract
+- [x] T097 Studio: handling of `reauth_required` in the client and in the UI (message on
+  return); regenerate the client
+- [x] T098 Strength meter in the Keycloak `cap` theme (`infra/keycloak/themes/cap/`), on
+  the set and change password screens; E2E in `tests/e2e/specs/activation.spec.ts` checks
+  the indicator; test in `cp/tests/unit/test_keycloak_theme.py`
+- [x] T099 Update `checklists/asvs-l2.md` (2.1.6, 2.1.8, 3.7.1 and open items) and the
+  E2E `tests/e2e/specs/user-management.spec.ts` with a sensitive action after the new
+  authentication
 
-**Checkpoint:** pendências P1 e P2 do checklist ASVS resolvidas.
+**Checkpoint:** ASVS checklist open items P1 and P2 resolved.
 
-## Dependências e ordem
+## Dependencies and order
 
-- Setup (T001–T007) → Fundação (T008–T031) → US1 → US2 → US3 → US4 → Migração para o
-  Super Administrador (T080–T090) → US5 → US6 → Acabamento.
-- Na migração: T084 → T085 → T086 → T087; T088 e T089 depois de T084; T090 depois de
-  T086 (cliente gerado).
-- **T008 bloqueia T009–T012** e, por consequência, todas as histórias.
-- Na Fundação: T013 antes dos testes de integração; T018 → T019 → T020; T022 → T023 →
+- Setup (T001–T007) → Foundation (T008–T031) → US1 → US2 → US3 → US4 → Migration to the
+  Super Administrator (T080–T090) → US5 → US6 → Polish.
+- In the migration: T084 → T085 → T086 → T087; T088 and T089 after T084; T090 after
+  T086 (generated client).
+- **T008 blocks T009–T012** and, consequently, all stories.
+- In the Foundation: T013 before the integration tests; T018 → T019 → T020; T022 → T023 →
   T024; T026 → T027; T028 → T029; T030 → T031.
-- US2 depende de US1 (callback de login). US3 depende de US2 (Administrador existente).
-  US4 só fecha depois que as rotas de US1–US3 existem. US5 e US6 dependem da migração
-  (T080–T090) e podem andar em paralelo depois dela.
-- T041 (cliente gerado) antes das telas do Studio que consomem a API (T040 em diante).
+- US2 depends on US1 (login callback). US3 depends on US2 (existing Administrator).
+  US4 only closes after the US1–US3 routes exist. US5 and US6 depend on the migration
+  (T080–T090) and can proceed in parallel after it.
+- T041 (generated client) before the Studio screens that consume the API (T040 onward).
 
-## Análise (preenchida antes de implementar)
+## Analysis (filled in before implementing)
 
-Executada em 2026-10-02 sobre spec, plano, pesquisa, modelo de dados, contratos, tarefas
-e constituição v1.1.0. Revisada em 2026-10-03 para o Super Administrador (A16–A19).
+Run on 2026-10-02 over the spec, plan, research, data model, contracts, tasks and
+constitution v1.1.0. Revised on 2026-10-03 for the Super Administrator (A16–A19).
 
-| Verificação | Resultado |
+| Check | Result |
 |---|---|
-| Todo RF/RNF tem tarefa | ✅ após os ajustes A1–A8 (matriz abaixo) |
-| Toda tarefa remete a requisito/história | ✅ Setup e Fundação servem a todas as histórias; demais tarefas marcadas com `[USn]` ou com o requisito |
-| Spec, plano e tarefas consistentes (termos, escopo) | ✅ após a decisão do achado A9 |
-| Nenhum `[PRECISA ESCLARECIMENTO]` restante | ✅ |
-| Conformidade com a constituição | ✅ nenhuma violação |
+| Every RF/RNF has a task | ✅ after adjustments A1–A8 (matrix below) |
+| Every task maps to a requirement/story | ✅ Setup and Foundation serve all stories; other tasks marked with `[USn]` or with the requirement |
+| Spec, plan and tasks consistent (terms, scope) | ✅ after the decision on finding A9 |
+| No `[NEEDS CLARIFICATION]` remaining | ✅ |
+| Compliance with the constitution | ✅ no violations |
 
-### Achados
+### Findings
 
-| # | Severidade | Achado | Resolução |
+| # | Severity | Finding | Resolution |
 |---|---|---|---|
-| A1 | Alta | RF-024 (fornecedor sem acesso) não tinha tarefa nem teste | Incluído em T012 (realm sem administradores ou clientes extras) e T055 |
-| A2 | Alta | Sem verificação de que falhas de **código** contam para o bloqueio (RF-003); depende da extensão | Item (5) em T008; T012 testa bloqueio por senha e por código |
-| A3 | Média | RNF-004: faltavam métricas de logins, falhas e bloqueios e o alerta de falha de envio de e-mail (caso de borda da spec) | Incluído em T033 e T038; o alerta de falha de envio foi reclassificado no A14 |
-| A4 | Média | RF-006: listar e encerrar as próprias sessões sem teste | Incluído em T032 |
-| A5 | Média | RF-009 e caso de borda: remoção de organização com a pessoa logada sem teste | Incluído em T060 |
-| A6 | Média | RF-010: validade de convites e links não era configurável pela tela de segurança | Incluído em T048; o contrato `PUT /security-settings` passa a cobrir esses prazos |
-| A7 | Média | Princípio VIII: o plano previa comparar o OpenAPI com o contrato, mas não havia tarefa | Nova T078 |
-| A8 | Baixa | CS-001 a CS-003 medem tempo de pessoas reais e não têm verificação; RNF-007 não media a chegada do e-mail | Nova T079 (validação com usuários); T075 ampliada. Trivy agora falha com vulnerabilidade alta ou crítica (T073, Princípio X) |
-| A9 | Média | **RF-015** (custos só dos próprios agentes) é requisito da spec, mas o plano entrega só a permissão e adia o filtro para a feature do Dashboard de Custos, porque "responsável pelo agente" ainda não existe | **Decidido em 2026-10-02 (Fulvio Jorge da Silva):** RF-015 concluído na feature do Dashboard de Custos; registrado na spec |
-| A10 | Baixa | US2, cenário 3 (ver a ativação no Audit Trail) depende da tela de auditoria, que é da US6 (P2) | Aceito: até a US6, a verificação é feita pela API em T042 |
-| A11 | Baixa | O evento `audit.tamper_attempt` depende da coleta de logs da observabilidade, que ainda não existe | Aceito: a tentativa já fica no log do PostgreSQL (US6, cenário 3); o alerta automático vem com a observabilidade |
-| A12 | Baixa | Dados de usuários desativados não têm prazo de retenção (RNF-002) | Aceito: ficam até pedido de esquecimento, para preservar a auditoria; revisar com o DPO junto da retenção de 12 meses do plano |
-| A13 | Processo | Esta branch parte de `docs/constitution-security`; a stack §3.16 cita o Playwright da §3.1, que está na branch `docs/stack-playwright` | Ordem de merge: `docs/constitution-security` → `docs/stack-playwright` → `001-identity-access` |
-| A14 | Média | T008: a extensão de código por e-mail não gera evento de envio e reenvio, nem de falha de envio | **Decidido em 2026-10-02 (Fulvio Jorge da Silva):** envio e reenvio saem do RF-021 (spec atualizada; `auth.code_sent` retirado do catálogo). O alerta de falha de envio vem do log de erro do Keycloak, coletado pela observabilidade (mesma situação do A11) |
-| A16 | **Crítica** | Revisão 2026-10-03: o código entregue em US1–US4 dá ao Administrador da instalação Administrador implícito em todas as organizações e ignora o RLS (`has_installation_scope()`), o que viola RF-016 e RF-028 da spec revisada | Fase 7 (T080–T090) antes da US5; checkpoint exige `403` do Super Administrador em toda rota de organização |
-| A17 | Média | CS-008 (convite de organização em menos de 1 min; ativação em menos de 5 min) mede tempo de pessoas reais | Incluído no roteiro de validação com usuários (T079) |
-| A18 | Média | RF-029 (billing de todas as organizações) só cria a permissão, porque as telas são da feature de Faturamento | Mesma solução do A9, já registrada na spec (Fora de escopo e RF-029) |
-| A20 | Alta | Checklist ASVS (T076): sem reautenticação antes de ações sensíveis (2.1.6, 3.7.1) | **Decidido em 2026-10-04 (Fulvio Jorge da Silva):** implementar na Fase 1 (RF-031; T093–T097, T099) |
-| A21 | Média | Checklist ASVS: sem medidor de força da senha (2.1.8); P3 a P5 dependem do provisionamento | **Decidido em 2026-10-04:** medidor nesta feature (RF-032; T098); P3 a P5 viraram requisitos do provisionamento (§53.2) |
-| A19 | Processo | A revisão é uma mudança de escopo relevante, que pelo `docs/sdd/README.md` seria uma feature nova | **Decidido em 2026-10-03 (Fulvio Jorge da Silva):** revisão dentro da 001, com nova aprovação de spec, plano e tarefas |
-| A15 | **Crítica** | T012: com brute force ligado, falhas de código não contam para o bloqueio e a extensão não limita tentativas; o código pode ser testado sem limite (viola RF-002, RF-003 e Princípio X) | **Corrigido em 2026-10-02** (decisão: patch na extensão). Causa: o Keycloak só conta falhas das categorias `password`, `otp` e códigos de recuperação. Patch `infra/keycloak/patches/0001-limit-email-code-attempts.patch` aplicado no build sobre o commit fixado da v26.5.0: tentativas contadas sempre, código invalidado após 5 erros, falha registrada como `otp`. Validado pelos 71 testes da extensão e pelos testes do realm. Correção proposta ao projeto original no [PR #155](https://github.com/mesutpiskin/keycloak-2fa-email-authenticator/pull/155) (issue #146); remover o patch quando for publicada |
+| A1 | High | RF-024 (vendor without access) had no task or test | Included in T012 (realm without extra administrators or clients) and T055 |
+| A2 | High | No check that **code** failures count toward lockout (RF-003); depends on the extension | Item (5) in T008; T012 tests lockout by password and by code |
+| A3 | Medium | RNF-004: login, failure and lockout metrics and the e-mail send failure alert (spec edge case) were missing | Included in T033 and T038; the send failure alert was reclassified in A14 |
+| A4 | Medium | RF-006: listing and ending one's own sessions had no test | Included in T032 |
+| A5 | Medium | RF-009 and edge case: removal from an organization while the person is logged in had no test | Included in T060 |
+| A6 | Medium | RF-010: invitation and link validity was not configurable from the security screen | Included in T048; the `PUT /security-settings` contract now covers these periods |
+| A7 | Medium | Principle VIII: the plan called for comparing the OpenAPI with the contract, but there was no task | New T078 |
+| A8 | Low | CS-001 to CS-003 measure real people's time and had no verification; RNF-007 did not measure e-mail arrival | New T079 (user validation); T075 expanded. Trivy now fails on high or critical vulnerabilities (T073, Principle X) |
+| A9 | Medium | **RF-015** (costs of one's own agents only) is a spec requirement, but the plan delivers only the permission and defers the filter to the Cost Dashboard feature, because "agent owner" does not exist yet | **Decided on 2026-10-02 (Fulvio Jorge da Silva):** RF-015 completed in the Cost Dashboard feature; recorded in the spec |
+| A10 | Low | US2, scenario 3 (seeing the activation in the Audit Trail) depends on the audit screen, which belongs to US6 (P2) | Accepted: until US6, the check is done via the API in T042 |
+| A11 | Low | The `audit.tamper_attempt` event depends on observability log collection, which does not exist yet | Accepted: the attempt is already in the PostgreSQL log (US6, scenario 3); the automatic alert comes with observability |
+| A12 | Low | Data of disabled users has no retention period (RNF-002) | Accepted: kept until a right-to-be-forgotten request, to preserve the audit trail; review with the DPO together with the plan's 12-month retention |
+| A13 | Process | This branch starts from `docs/constitution-security`; stack §3.16 cites Playwright from §3.1, which is in the `docs/stack-playwright` branch | Merge order: `docs/constitution-security` → `docs/stack-playwright` → `001-identity-access` |
+| A14 | Medium | T008: the e-mail code extension does not emit send and resend events, nor send failure events | **Decided on 2026-10-02 (Fulvio Jorge da Silva):** send and resend are removed from RF-021 (spec updated; `auth.code_sent` removed from the catalog). The send failure alert comes from the Keycloak error log, collected by observability (same situation as A11) |
+| A16 | **Critical** | Revision 2026-10-03: the code delivered in US1–US4 gives the installation Administrator an implicit Administrator role in every organization and bypasses RLS (`has_installation_scope()`), which violates RF-016 and RF-028 of the revised spec | Phase 7 (T080–T090) before US5; the checkpoint requires `403` for the Super Administrator on every organization route |
+| A17 | Medium | CS-008 (organization invitation in under 1 min; activation in under 5 min) measures real people's time | Included in the user validation script (T079) |
+| A18 | Medium | RF-029 (billing for all organizations) only creates the permission, because the screens belong to the Billing feature | Same solution as A9, already recorded in the spec (Out of scope and RF-029) |
+| A20 | High | ASVS checklist (T076): no re-authentication before sensitive actions (2.1.6, 3.7.1) | **Decided on 2026-10-04 (Fulvio Jorge da Silva):** implement in Phase 1 (RF-031; T093–T097, T099) |
+| A21 | Medium | ASVS checklist: no password strength meter (2.1.8); P3 to P5 depend on provisioning | **Decided on 2026-10-04:** meter in this feature (RF-032; T098); P3 to P5 became provisioning requirements (§53.2) |
+| A19 | Process | The revision is a significant scope change, which per `docs/sdd/README.md` would be a new feature | **Decided on 2026-10-03 (Fulvio Jorge da Silva):** revision within 001, with new approval of spec, plan and tasks |
+| A15 | **Critical** | T012: with brute force enabled, code failures do not count toward lockout and the extension does not limit attempts; the code can be tried without limit (violates RF-002, RF-003 and Principle X) | **Fixed on 2026-10-02** (decision: patch the extension). Cause: Keycloak only counts failures in the `password`, `otp` and recovery code categories. Patch `infra/keycloak/patches/0001-limit-email-code-attempts.patch` applied at build time on top of the pinned v26.5.0 commit: attempts always counted, code invalidated after 5 errors, failure recorded as `otp`. Validated by the extension's 71 tests and the realm tests. Fix proposed upstream in [PR #155](https://github.com/mesutpiskin/keycloak-2fa-email-authenticator/pull/155) (issue #146); remove the patch once it is released |
 
-### Matriz de rastreabilidade
+### Traceability matrix
 
-| Requisito | Tarefas |
+| Requirement | Tasks |
 |---|---|
-| RF-001 login + código | T008, T011, T012, T034, T036 |
-| RF-002 regras do código | T008, T011, T034 |
-| RF-003 bloqueio | T008, T011, T012, T034 |
-| RF-004 recuperação de senha | T011, T034 |
-| RF-005 troca de senha encerra sessões e avisa | T033, T034, T038 |
-| RF-006 sessões | T028, T029, T032, T034, T039, T040 |
-| RF-007 política de senha configurável | T011, T012, T048, T053, T054, T083 |
-| RF-008 Super Administrador inicial | T042–T045, T083, T089 |
-| RF-009 gestão de usuários | T046, T047, T049–T052, T054, T060, T083, T087 |
-| RF-010 convites de uso único e validade | T011, T042, T046, T048 |
-| RF-011 desativação encerra sessões | T046, T049, T050, T087 |
-| RF-012 último Administrador e último Super Administrador | T046, T050, T060, T083, T087, T091 |
-| RF-013 perfis fixos | T026, T027 |
-| RF-014 matriz aplicada no servidor | T026, T027, T055–T059 |
-| RF-015 custos dos próprios agentes | T027 (permissão) — ver A9 |
-| RF-016 Administrador só na organização | T026, T080, T085 |
-| RF-017 perfil vale na próxima ação | T046, T050 |
-| RF-018 só o Super Administrador cria organizações | T060, T062, T063, T064 |
-| RF-019 várias organizações e troca | T060, T062–T064 |
-| RF-020 isolamento entre organizações | T018–T020, T061 |
-| RF-021 eventos auditados | T022–T024, T033, T038, T066 |
-| RF-022 campos do evento | T022, T066 |
-| RF-023 consulta e exportação | T065, T068, T070, T088 |
-| RF-024 fornecedor só como Super Administrador | T012, T055, T080, T083 |
-| RF-025 listar e editar organizações | T060, T063, T064 |
-| RF-026 suspender e reativar | T060, T062, T063, T064, T085 |
-| RF-027 Administradores das organizações | T060, T063, T064 |
-| RF-028 Super Administrador fora das organizações | T080, T081, T083, T084, T085 |
-| RF-029 billing de todas as organizações | T080 (permissão) — ver A18 |
-| RF-030 gestão de Super Administradores | T091, T092, T064 |
-| RF-031 reautenticação recente | T093–T097, T099 |
-| RF-032 medidor de força da senha | T098 |
+| RF-001 login + code | T008, T011, T012, T034, T036 |
+| RF-002 code rules | T008, T011, T034 |
+| RF-003 lockout | T008, T011, T012, T034 |
+| RF-004 password recovery | T011, T034 |
+| RF-005 password change ends sessions and notifies | T033, T034, T038 |
+| RF-006 sessions | T028, T029, T032, T034, T039, T040 |
+| RF-007 configurable password policy | T011, T012, T048, T053, T054, T083 |
+| RF-008 initial Super Administrator | T042–T045, T083, T089 |
+| RF-009 user management | T046, T047, T049–T052, T054, T060, T083, T087 |
+| RF-010 single-use invitations and validity | T011, T042, T046, T048 |
+| RF-011 deactivation ends sessions | T046, T049, T050, T087 |
+| RF-012 last Administrator and last Super Administrator | T046, T050, T060, T083, T087, T091 |
+| RF-013 fixed roles | T026, T027 |
+| RF-014 matrix enforced on the server | T026, T027, T055–T059 |
+| RF-015 costs of one's own agents | T027 (permission) — see A9 |
+| RF-016 Administrator only within the organization | T026, T080, T085 |
+| RF-017 role takes effect on the next action | T046, T050 |
+| RF-018 only the Super Administrator creates organizations | T060, T062, T063, T064 |
+| RF-019 multiple organizations and switching | T060, T062–T064 |
+| RF-020 isolation between organizations | T018–T020, T061 |
+| RF-021 audited events | T022–T024, T033, T038, T066 |
+| RF-022 event fields | T022, T066 |
+| RF-023 query and export | T065, T068, T070, T088 |
+| RF-024 vendor only as Super Administrator | T012, T055, T080, T083 |
+| RF-025 list and edit organizations | T060, T063, T064 |
+| RF-026 suspend and reactivate | T060, T062, T063, T064, T085 |
+| RF-027 organization Administrators | T060, T063, T064 |
+| RF-028 Super Administrator outside organizations | T080, T081, T083, T084, T085 |
+| RF-029 billing for all organizations | T080 (permission) — see A18 |
+| RF-030 Super Administrator management | T091, T092, T064 |
+| RF-031 recent re-authentication | T093–T097, T099 |
+| RF-032 password strength meter | T098 |
 | RNF-001 multi-tenant | T018–T020, T061, T081 |
 | RNF-002 LGPD | T015, T016, T067, T069, T072 |
-| RNF-003 política | não se aplica (sem agentes) |
-| RNF-004 observabilidade e auditoria | T014, T033, T038, T066 |
-| RNF-005 segurança da aplicação | T005, T007, T009, T028, T032, T035, T071, T073, T076 |
-| RNF-006 segurança de IA | não se aplica (sem LLM); garantido por desenho |
-| RNF-007 desempenho | T075 |
-| CS-001 a CS-003 | T079 |
+| RNF-003 policy | not applicable (no agents) |
+| RNF-004 observability and audit | T014, T033, T038, T066 |
+| RNF-005 application security | T005, T007, T009, T028, T032, T035, T071, T073, T076 |
+| RNF-006 AI safety | not applicable (no LLM); guaranteed by design |
+| RNF-007 performance | T075 |
+| CS-001 to CS-003 | T079 |
 | CS-004 | T055, T061 |
 | CS-005 | T046 |
 | CS-006 | T066 |
@@ -537,4 +543,4 @@ e constituição v1.1.0. Revisada em 2026-10-03 para o Super Administrador (A16�
 | CS-008 | T062, T079 |
 | CS-009 | T060 |
 
-**Bloqueios:** nenhum.
+**Blockers:** none.

@@ -1,181 +1,182 @@
-# Pesquisa: 001-identity-access
+# Research: 001-identity-access
 
-Decisões técnicas que embasam o [plano](plan.md). Cada item registra a pergunta, a
-decisão, as alternativas e o que ainda precisa ser verificado na implementação.
+Technical decisions behind the [plan](plan.md). Each item records the question, the
+decision, the alternatives and what still needs to be verified during implementation.
 
-- **Data:** 2026-10-02
-- **Constituição:** v1.1.0 (Princípio X determina que a autenticação de usuários é
-  delegada ao Keycloak)
+- **Date:** 2026-10-02
+- **Constitution:** v1.1.0 (Principle X requires user authentication to be delegated to
+  Keycloak)
 
 ---
 
-## R1. Segundo fator por código no e-mail
+## R1. Second factor via e-mail code
 
-**Pergunta:** o Keycloak oferece código de uso único por e-mail como segundo fator?
+**Question:** does Keycloak offer a one-time e-mail code as a second factor?
 
-**Fatos verificados:**
-- A versão mais recente é a **26.8.0**. As notas de versão não mencionam autenticador de
-  código por e-mail; os segundos fatores nativos são TOTP, WebAuthn e códigos de
-  recuperação.
-- O recurso existe como extensão da comunidade (Authenticator SPI, em Java).
+**Verified facts:**
+- The latest version is **26.8.0**. The release notes do not mention an e-mail code
+  authenticator; the native second factors are TOTP, WebAuthn and recovery codes.
+- The feature exists as a community extension (Authenticator SPI, in Java).
 
-**Opções avaliadas:**
+**Options evaluated:**
 
-| Opção | Licença | Situação | Avaliação |
+| Option | License | Status | Assessment |
 |---|---|---|---|
-| `mesutpiskin/keycloak-2fa-email-authenticator` | Apache 2.0 | ~280 estrelas, releases acompanham as versões do Keycloak (última em 2026-09) | Configura tamanho do código, validade, intervalo de reenvio e máximo de tentativas; templates e i18n; envio por SMTP do próprio Keycloak |
-| `for-keycloak/email-otp-authenticator` | Unlicense | ~30 estrelas, ativa | Domínio público, aprovado pela OSI, mas base de usuários pequena |
-| Extensão própria (Authenticator SPI) | — | — | ~200 linhas de Java; controle total, mas introduz Java como linguagem mantida pelo time (decisão em aberto nº 6 da stack) |
+| `mesutpiskin/keycloak-2fa-email-authenticator` | Apache 2.0 | ~280 stars, releases follow Keycloak versions (latest in 2026-09) | Configures code length, validity, resend interval and maximum attempts; templates and i18n; sends via Keycloak's own SMTP |
+| `for-keycloak/email-otp-authenticator` | Unlicense | ~30 stars, active | Public domain, OSI approved, but small user base |
+| Own extension (Authenticator SPI) | — | — | ~200 lines of Java; full control, but introduces Java as a language maintained by the team (open decision no. 6 of the stack) |
 
-**Decisão:** usar `mesutpiskin/keycloak-2fa-email-authenticator`, com **versão fixada e
-checksum verificado** na construção da imagem do Keycloak. O Keycloak é fixado na versão
-que a extensão suporta oficialmente.
+**Decision:** use `mesutpiskin/keycloak-2fa-email-authenticator`, with a **pinned version
+and verified checksum** when building the Keycloak image. Keycloak is pinned to the
+version the extension officially supports.
 
-**A verificar na implementação (bloqueia a tarefa de configuração do fluxo de login):**
-1. Se o código é guardado em texto claro na nota da sessão de autenticação. Se for,
-   avaliar o risco (a nota fica só em memória e expira com a sessão de login) e, se
-   necessário, contribuir com o armazenamento por hash ou manter um fork.
-2. Se a extensão emite eventos de envio, reenvio e falha de código (RF-021). Se não
-   emitir, a falta de evento precisa ser coberta antes de concluir a feature.
-3. Se cada reenvio invalida o código anterior (RF-002).
-4. Compatibilidade com a versão do Keycloak fixada e com o tema da plataforma.
+**To verify during implementation (blocks the login flow configuration task):**
+1. Whether the code is stored in clear text in the authentication session note. If so,
+   assess the risk (the note lives only in memory and expires with the login session)
+   and, if needed, contribute hash-based storage or maintain a fork.
+2. Whether the extension emits events for code send, resend and failure (RF-021). If it
+   does not, the missing event must be covered before completing the feature.
+3. Whether each resend invalidates the previous code (RF-002).
+4. Compatibility with the pinned Keycloak version and with the platform theme.
 
-**Plano B:** se algum item acima não puder ser resolvido por configuração ou
-contribuição, escrever a extensão própria. Isso exige aprovação da inclusão de Java
-(decisão em aberto nº 6 da stack).
+**Plan B:** if any item above cannot be solved by configuration or contribution, write
+our own extension. This requires approval for including Java (open decision no. 6 of the
+stack).
 
-### Resultado da verificação (T008, 2026-10-02)
+### Verification result (T008, 2026-10-02)
 
-Leitura do código-fonte da release **v26.5.0** (commit `904a123` da `main` para
-comparação). Artefato: `keycloak-2fa-email-authenticator-v26.5.0-KC26.7.3.jar`, com
-assinatura GPG (`.asc`) publicada.
+Reading of the **v26.5.0** release source code (commit `904a123` of `main` for
+comparison). Artifact: `keycloak-2fa-email-authenticator-v26.5.0-KC26.7.3.jar`, with a
+published GPG signature (`.asc`).
 
-| # | Pergunta | Resultado |
+| # | Question | Result |
 |---|---|---|
-| 1 | Código em texto claro? | ✅ Não. Guardado como SHA-256 na nota da sessão de autenticação (`OtpHashUtils`), comparação em tempo constante. Código gerado por `SecretGenerator` do Keycloak |
-| 2 | Eventos de envio, reenvio e falha? | ⚠️ **Parcial.** Falhas de código geram `LOGIN_ERROR` (`invalid_user_credentials`, `expired_code`). **Envio e reenvio não geram evento.** Falha no envio do e-mail só gera log de erro, sem evento |
-| 3 | Reenvio invalida o anterior? | ✅ Sim (`resetEmailCode` remove o hash antes de gerar outro). Intervalo mínimo entre reenvios configurável (`resendCooldown`) |
-| 4 | Versão do Keycloak | ✅ Builds para 26.5.x a **26.7.3**. A 26.8.0 ainda não tem build: o Keycloak fica na série **26.7** (26.7.3; **26.7.5** desde 2026-10-04, por correções de segurança da distribuição apontadas pelo Trivy na T073, com a extensão recompilada e os testes do realm repetidos) |
-| 5 | Falhas de código contam para o bloqueio? | ❌ **Não** (corrigido na T012, achado A15). Pela leitura do código parecia que sim, mas o teste real no Keycloak 26.7.3 mostrou que as falhas de código não entram no contador. E, com brute force ligado, a extensão não aplica o próprio `maxAttempts`: **o código pode ser testado sem limite** durante a validade. **Corrigido por patch** (achado A15): o build compila a extensão a partir do commit fixado com `infra/keycloak/patches/0001-limit-email-code-attempts.patch` |
+| 1 | Code in clear text? | ✅ No. Stored as SHA-256 in the authentication session note (`OtpHashUtils`), constant-time comparison. Code generated by Keycloak's `SecretGenerator` |
+| 2 | Send, resend and failure events? | ⚠️ **Partial.** Code failures produce `LOGIN_ERROR` (`invalid_user_credentials`, `expired_code`). **Send and resend do not produce events.** A failure to send the e-mail only produces an error log, with no event |
+| 3 | Does resend invalidate the previous code? | ✅ Yes (`resetEmailCode` removes the hash before generating another). Minimum interval between resends is configurable (`resendCooldown`) |
+| 4 | Keycloak version | ✅ Builds for 26.5.x up to **26.7.3**. 26.8.0 has no build yet: Keycloak stays on the **26.7** series (26.7.3; **26.7.5** since 2026-10-04, due to distribution security fixes flagged by Trivy in T073, with the extension rebuilt and the realm tests rerun) |
+| 5 | Do code failures count toward lockout? | ❌ **No** (fixed in T012, finding A15). Reading the code suggested they did, but the real test on Keycloak 26.7.3 showed that code failures do not enter the counter. And, with brute force enabled, the extension does not apply its own `maxAttempts`: **the code can be tried without limit** during its validity. **Fixed by a patch** (finding A15): the build compiles the extension from the pinned commit with `infra/keycloak/patches/0001-limit-email-code-attempts.patch` |
 
-**Outros achados:**
-- O assunto do e-mail vem da chave `emailCodeSubject` do tema; o tema `cap` traduz para
-  PT-BR sem alterar a extensão.
-- A extensão registra o e-mail do usuário em logs `INFO` (envio com sucesso) e `ERROR`
-  (falha). Mitigação: nível `WARN` para a categoria `com.mesutpiskin` e redação na
-  coleta de logs. Resta o e-mail em logs de erro de envio.
-- O modo de simulação (`simulationMode`) escreve o código no log: o realm deve fixá-lo
-  em `false` e o teste do realm (T012) deve verificar.
-- Configuração equivalente aos padrões da spec: `length=6`, `ttl=600`,
-  `resendCooldown=300` (no máximo 3 reenvios a cada 15 min).
+**Other findings:**
+- The e-mail subject comes from the theme's `emailCodeSubject` key; the `cap` theme
+  translates it to Brazilian Portuguese without changing the extension.
+- The extension logs the user's e-mail at `INFO` (successful send) and `ERROR` (failure).
+  Mitigation: `WARN` level for the `com.mesutpiskin` category and redaction in log
+  collection. The e-mail remains in send-error logs.
+- Simulation mode (`simulationMode`) writes the code to the log: the realm must pin it to
+  `false` and the realm test (T012) must verify it.
+- Configuration equivalent to the spec defaults: `length=6`, `ttl=600`,
+  `resendCooldown=300` (at most 3 resends every 15 min).
 
-**Decisão sobre o item 2 (2026-10-02, Fulvio Jorge da Silva):** envio e reenvio do
-código saem do RF-021; o alerta de falha de envio vem do log de erro do Keycloak, pela
-observabilidade. A extensão é usada sem alterações e sem Java próprio (achado A14).
+**Decision on item 2 (2026-10-02, Fulvio Jorge da Silva):** code send and resend are
+removed from RF-021; the send-failure alert comes from the Keycloak error log, via
+observability. The extension is used unchanged and without our own Java (finding A14).
 
-## R2. Organizações: Keycloak Organizations ou Control Plane?
+## R2. Organizations: Keycloak Organizations or the Control Plane?
 
-**Fatos verificados:** desde a versão 26, o Keycloak tem *Organizations*, com
-participação em várias organizações e convites. A 26.7 trouxe grupos por organização com
-herança de papéis.
+**Verified facts:** since version 26, Keycloak has *Organizations*, with membership in
+several organizations and invitations. 26.7 added per-organization groups with role
+inheritance.
 
-**Decisão:** o Keycloak cuida **só da autenticação**. Organizações, vínculos, perfis e
-escopo de Administrador ficam no **banco do Control Plane**.
+**Decision:** Keycloak handles **authentication only**. Organizations, memberships, roles
+and Administrator scope live in the **Control Plane database**.
 
-**Motivos:**
-- A autorização é avaliada no servidor a cada requisição a partir do banco, o que faz a
-  mudança de perfil valer na próxima ação (RF-017) sem depender da renovação de tokens.
-- O isolamento por organização usa RLS no PostgreSQL (Princípio IV), na mesma base dos
-  agentes, Skills e demais recursos que virão nas próximas features.
-- Mantém o Keycloak substituível e simplifica a auditoria, que fica toda no Control Plane.
+**Reasons:**
+- Authorization is evaluated on the server on every request from the database, which
+  makes a role change take effect on the next action (RF-017) without depending on token
+  renewal.
+- Organization isolation uses PostgreSQL RLS (Principle IV), in the same database as the
+  agents, Skills and other resources coming in the next features.
+- It keeps Keycloak replaceable and simplifies auditing, which stays entirely in the
+  Control Plane.
 
-**Alternativa rejeitada:** perfis como papéis do Keycloak por organização. Cria duas
-fontes de verdade e obriga a sincronizar a cada mudança.
+**Rejected alternative:** roles as Keycloak roles per organization. It creates two sources
+of truth and requires syncing on every change.
 
-## R3. Sessão no navegador: tokens no front-end ou BFF?
+## R3. Browser session: tokens in the front end or BFF?
 
-**Decisão:** padrão **BFF (Backend for Frontend)** no Control Plane.
-- Fluxo OIDC Authorization Code com PKCE entre o Control Plane e o Keycloak (Authlib,
-  já na stack).
-- O navegador recebe apenas um cookie de sessão opaco (`__Host-`, `HttpOnly`, `Secure`,
-  `SameSite=Lax`). Tokens nunca chegam ao JavaScript (RNF-005).
-- A sessão fica no Valkey; os tokens do Keycloak ficam cifrados com chave obtida do
-  OpenBao (Princípio X).
-- Proteção contra CSRF: `SameSite=Lax` mais token anti-CSRF em cabeçalho nas requisições
-  que alteram estado.
-- *Back-channel logout* do Keycloak para o Control Plane, para encerrar a sessão do BFF
-  quando o Keycloak encerrar a sessão (ex.: troca de senha).
+**Decision:** **BFF (Backend for Frontend)** pattern in the Control Plane.
+- OIDC Authorization Code flow with PKCE between the Control Plane and Keycloak (Authlib,
+  already in the stack).
+- The browser receives only an opaque session cookie (`__Host-`, `HttpOnly`, `Secure`,
+  `SameSite=Lax`). Tokens never reach JavaScript (RNF-005).
+- The session lives in Valkey; the Keycloak tokens are encrypted with a key obtained from
+  OpenBao (Principle X).
+- CSRF protection: `SameSite=Lax` plus an anti-CSRF token in a header on state-changing
+  requests.
+- Keycloak *back-channel logout* to the Control Plane, to end the BFF session when
+  Keycloak ends the session (e.g. password change).
 
-**Alternativas rejeitadas:**
-- Tokens no navegador (SPA pública): expõe tokens a XSS.
-- Auth.js no Next.js: põe a lógica de sessão em dois lugares (Next.js e API).
+**Rejected alternatives:**
+- Tokens in the browser (public SPA): exposes tokens to XSS.
+- Auth.js in Next.js: puts session logic in two places (Next.js and the API).
 
-## R4. Eventos do Keycloak no Audit Trail
+## R4. Keycloak events in the Audit Trail
 
-**Decisão:** um *worker* do Control Plane lê periodicamente (a cada 5 s) os eventos de
-login e de administração pela Admin REST API do Keycloak, com cursor persistido, e os
-grava no Audit Trail. O Keycloak guarda os eventos por 7 dias como margem.
+**Decision:** a Control Plane *worker* periodically reads (every 5 s) login and admin
+events through the Keycloak Admin REST API, with a persisted cursor, and writes them to
+the Audit Trail. Keycloak keeps events for 7 days as a margin.
 
-**Alternativa rejeitada:** *event listener* SPI no Keycloak publicando em fila. Exige
-Java próprio e um barramento de eventos que a Fase 1 ainda não definiu (NATS ou Kafka).
+**Rejected alternative:** an *event listener* SPI in Keycloak publishing to a queue. It
+requires our own Java and an event bus that Phase 1 has not defined yet (NATS or Kafka).
 
-**Risco:** se o worker ficar parado por mais de 7 dias, eventos se perdem. Mitigação:
-alerta quando o cursor atrasar mais de 5 minutos.
+**Risk:** if the worker is stopped for more than 7 days, events are lost. Mitigation:
+alert when the cursor lags by more than 5 minutes.
 
-## R5. Rejeição de senhas vazadas (RF-007)
+## R5. Rejecting breached passwords (RF-007)
 
-**Decisão:** política *Password Blacklist* nativa do Keycloak, com uma lista offline de
-senhas vazadas (por exemplo, a lista de 1 milhão de senhas mais comuns do SecLists, MIT).
-Junto com tamanho mínimo de 12 caracteres, histórico de 5 senhas e proibição de usar o
-e-mail como senha.
+**Decision:** Keycloak's native *Password Blacklist* policy, with an offline list of
+breached passwords (for example, SecLists' list of the 1 million most common passwords,
+MIT). Combined with a minimum length of 12 characters, a history of 5 passwords and a ban
+on using the e-mail as the password.
 
-**Alternativa rejeitada:** consulta online ao Have I Been Pwned. Depende de serviço
-externo e envia prefixos de hash para fora da instalação do cliente.
+**Rejected alternative:** online lookup against Have I Been Pwned. It depends on an
+external service and sends hash prefixes outside the customer's installation.
 
-## R6. Configuração do Keycloak como código
+## R6. Keycloak configuration as code
 
-**Decisão:** **keycloak-config-cli** (adorsys, Apache 2.0) aplica de forma idempotente um
-arquivo versionado com o realm, os clientes, o fluxo de login, as políticas e os tempos de
-sessão. O mesmo arquivo serve ao ambiente local, ao CI e ao provisionamento.
+**Decision:** **keycloak-config-cli** (adorsys, Apache 2.0) idempotently applies a
+versioned file with the realm, clients, login flow, policies and session timeouts. The
+same file serves the local environment, CI and provisioning.
 
-**Alternativa rejeitada:** importação de realm na inicialização do Keycloak. Só funciona
-na primeira subida e não aplica mudanças em instalações existentes.
+**Rejected alternative:** realm import at Keycloak startup. It only works on first start
+and does not apply changes to existing installations.
 
-## R7. Telas de login com a identidade da marca
+## R7. Login screens with the brand identity
 
-**Decisão:** tema próprio do Keycloak que estende o tema padrão (`keycloak.v2`) com CSS e
-mensagens em português, usando os tokens do media kit.
+**Decision:** a custom Keycloak theme extending the default theme (`keycloak.v2`) with CSS
+and Portuguese messages, using the media kit tokens.
 
-**Alternativa rejeitada:** Keycloakify (MIT). Permite telas em React, mas adiciona um
-processo de build para poucas telas (login, código, troca de senha, recuperação, erro).
+**Rejected alternative:** Keycloakify (MIT). It allows React screens, but adds a build
+process for a handful of screens (login, code, password change, recovery, error).
 
-## R8. Ferramentas de engenharia (primeira feature com código)
+## R8. Engineering tooling (first feature with code)
 
-Escolhas para as pendências 14 a 20 da lista de definições, todas com licença OSI:
+Choices for open items 14 to 20 of the definitions list, all with OSI licenses:
 
-| Necessidade | Escolha | Licença | Motivo |
+| Need | Choice | License | Reason |
 |---|---|---|---|
-| Organização do repositório | Monorepo: workspaces do uv (Python) e do pnpm (TypeScript) | — | Spec, contratos e código mudam juntos; sem Nx/Turborepo por enquanto |
-| Pacotes Python | uv | Apache 2.0 / MIT | Rápido, lockfile, workspaces |
-| Pacotes TypeScript | pnpm | MIT | Workspaces, lockfile estrito |
-| Testes Python | pytest + pytest-asyncio + Testcontainers | MIT / Apache 2.0 | Testes de integração com PostgreSQL, Valkey e Keycloak reais |
-| Lint, formatação e segurança Python | Ruff (inclui regras do Bandit) | MIT | Uma ferramenta para lint, formatação e análise estática de segurança |
-| Tipos Python | mypy (modo estrito) | MIT | |
-| Lint e formatação TypeScript | ESLint + Prettier | MIT | Padrão do ecossistema Next.js |
-| Testes unitários de front-end | Vitest | MIT | Proposta, ainda não aprovada (pendência 7) |
-| Testes E2E | Playwright | Apache 2.0 | Decidido (branch `docs/stack-playwright`) |
-| E-mail em desenvolvimento e testes | Mailpit | MIT | Captura e-mails; os testes E2E leem o código do segundo fator por API |
-| CI | GitHub Actions | — | Repositório no GitHub |
-| Varredura de segredos | gitleaks | MIT | CI e pre-commit (Princípio X) |
-| Vulnerabilidades em dependências e imagens | Trivy | Apache 2.0 | Já na stack (§3.14) |
+| Repository layout | Monorepo: uv (Python) and pnpm (TypeScript) workspaces | — | Spec, contracts and code change together; no Nx/Turborepo for now |
+| Python packages | uv | Apache 2.0 / MIT | Fast, lockfile, workspaces |
+| TypeScript packages | pnpm | MIT | Workspaces, strict lockfile |
+| Python tests | pytest + pytest-asyncio + Testcontainers | MIT / Apache 2.0 | Integration tests with real PostgreSQL, Valkey and Keycloak |
+| Python lint, formatting and security | Ruff (includes Bandit rules) | MIT | One tool for lint, formatting and static security analysis |
+| Python types | mypy (strict mode) | MIT | |
+| TypeScript lint and formatting | ESLint + Prettier | MIT | Next.js ecosystem standard |
+| Front-end unit tests | Vitest | MIT | Proposed, not yet approved (open item 7) |
+| E2E tests | Playwright | Apache 2.0 | Decided (branch `docs/stack-playwright`) |
+| E-mail in development and tests | Mailpit | MIT | Captures e-mails; E2E tests read the second-factor code via API |
+| CI | GitHub Actions | — | Repository on GitHub |
+| Secret scanning | gitleaks | MIT | CI and pre-commit (Principle X) |
+| Vulnerabilities in dependencies and images | Trivy | Apache 2.0 | Already in the stack (§3.14) |
 
-## Fontes
+## Sources
 
 - [Keycloak — Release Notes](https://www.keycloak.org/docs/latest/release_notes/index.html)
 - [Keycloak 26.3.0 released](https://www.keycloak.org/2025/07/keycloak-2630-released)
-- [Fórum Keycloak — Email OTP em 26.1.3 exige SPI](https://forum.keycloak.org/t/we-need-to-implement-mfa-in-keycloak-26-1-3-with-totp-and-email-otp-and-want-to-confirm-if-custom-spis-are-required-for-email-otp-support-and-dual-authentication-selection/29837)
+- [Keycloak forum — Email OTP in 26.1.3 requires an SPI](https://forum.keycloak.org/t/we-need-to-implement-mfa-in-keycloak-26-1-3-with-totp-and-email-otp-and-want-to-confirm-if-custom-spis-are-required-for-email-otp-support-and-dual-authentication-selection/29837)
 - [mesutpiskin/keycloak-2fa-email-authenticator](https://github.com/mesutpiskin/keycloak-2fa-email-authenticator)
 - [for-keycloak/email-otp-authenticator](https://github.com/for-keycloak/email-otp-authenticator)
-- [Keycloak Organizations — anúncio](https://www.keycloak.org/2024/06/announcement-keycloak-organizations)
+- [Keycloak Organizations — announcement](https://www.keycloak.org/2024/06/announcement-keycloak-organizations)
 - [Keycloak — Organization Groups](https://www.keycloak.org/2026/04/org-groups)
-- [Keycloak 25.0.0 — Argon2 como hash padrão](https://www.keycloak.org/2024/06/keycloak-2500-released)
+- [Keycloak 25.0.0 — Argon2 as the default hash](https://www.keycloak.org/2024/06/keycloak-2500-released)

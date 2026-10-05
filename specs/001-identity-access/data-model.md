@@ -1,218 +1,217 @@
-# Modelo de dados: 001-identity-access
+# Data model: 001-identity-access
 
-Banco do Control Plane (PostgreSQL 17). O Keycloak mantém o próprio banco (credenciais,
-sessões de login e eventos), que não é acessado diretamente pelo Control Plane: toda
-interação passa pela Admin REST API.
+Control Plane database (PostgreSQL 17). Keycloak keeps its own database (credentials,
+login sessions and events), which the Control Plane does not access directly: every
+interaction goes through the Admin REST API.
 
-## Quem guarda o quê
+## Who stores what
 
-| Dado | Fonte de verdade | Observação |
+| Data | Source of truth | Notes |
 |---|---|---|
-| Senha (hash Argon2) | Keycloak | Nunca trafega pelo Control Plane |
-| Código do segundo fator | Keycloak (sessão de autenticação, em memória) | Ver research R1 |
-| Bloqueio por tentativas | Keycloak (brute force detection) | Lido pela Admin API para exibir a situação "bloqueado" |
-| Nome, e-mail, situação do usuário | Control Plane, espelhado no Keycloak | O Control Plane comanda; o Keycloak recebe |
-| Organizações, vínculos, perfis, Super Administradores | Control Plane | Base da autorização (research R2) |
-| Convites e trocas de e-mail pendentes | Control Plane | Tokens guardados só como hash |
-| Sessões do BFF | Valkey | Ver seção "Sessões" |
-| Audit Trail | Control Plane (schema `audit`) | Inclui eventos importados do Keycloak |
+| Password (Argon2 hash) | Keycloak | Never passes through the Control Plane |
+| Second-factor code | Keycloak (authentication session, in memory) | See research R1 |
+| Attempt lockout | Keycloak (brute force detection) | Read via the Admin API to display the "locked" status |
+| User name, e-mail, status | Control Plane, mirrored in Keycloak | The Control Plane is in charge; Keycloak receives |
+| Organizations, memberships, roles, Super Administrators | Control Plane | Basis for authorization (research R2) |
+| Pending invitations and e-mail changes | Control Plane | Tokens stored only as hashes |
+| BFF sessions | Valkey | See the "Sessions" section |
+| Audit Trail | Control Plane (`audit` schema) | Includes events imported from Keycloak |
 
-## Schema `identity`
+## `identity` schema
 
 ### `organization`
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
 | `id` | uuid | PK |
-| `name` | text | obrigatório, único na instalação |
-| `slug` | text | único, kebab-case |
-| `status` | enum `pending`, `active`, `suspended`, `cancelled` | `pending` até o primeiro Administrador ativar o acesso (RF-018) |
-| `status_changed_at`, `status_changed_by` | timestamptz, uuid | última mudança de situação |
-| `version` | integer | trava otimista |
-| `created_at`, `created_by` | timestamptz, uuid | `created_by` é sempre um Super Administrador |
+| `name` | text | required, unique in the installation |
+| `slug` | text | unique, kebab-case |
+| `status` | enum `pending`, `active`, `suspended`, `cancelled` | `pending` until the first Administrator activates access (RF-018) |
+| `status_changed_at`, `status_changed_by` | timestamptz, uuid | last status change |
+| `version` | integer | optimistic lock |
+| `created_at`, `created_by` | timestamptz, uuid | `created_by` is always a Super Administrator |
 
-Não há organização padrão: a coluna `is_default` sai na migração 0004.
+There is no default organization: the `is_default` column is dropped in migration 0004.
 
 ### `user_account`
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
-| `id` | uuid | PK; igual ao id do usuário no Keycloak |
-| `email` | citext | único na instalação (identificador da pessoa) |
+| `id` | uuid | PK; same as the user id in Keycloak |
+| `email` | citext | unique in the installation (the person's identifier) |
 | `name` | text | |
-| `status` | enum `invited`, `active`, `disabled` | `blocked` é derivado do Keycloak, não persistido |
-| `last_login_at` | timestamptz | atualizado a partir dos eventos de login |
-| `anonymized_at` | timestamptz | preenchido no pedido de esquecimento (LGPD) |
-| `version` | integer | trava otimista contra edições simultâneas |
+| `status` | enum `invited`, `active`, `disabled` | `blocked` is derived from Keycloak, not persisted |
+| `last_login_at` | timestamptz | updated from login events |
+| `anonymized_at` | timestamptz | set on a right-to-be-forgotten request (LGPD) |
+| `version` | integer | optimistic lock against concurrent edits |
 | `created_at`, `updated_at` | timestamptz | |
 
 ### `super_admin`
 
-Pessoas com o papel de **Super Administrador** (spec §4.8). Antes da revisão de
-2026-10-03, `installation_admin` (renomeada na migração 0004).
+People with the **Super Administrator** role (spec §4.8). Before the 2026-10-03 revision,
+`installation_admin` (renamed in migration 0004).
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
 | `user_id` | uuid | PK, FK `user_account` |
 | `granted_at`, `granted_by` | timestamptz, uuid | |
 
-- RF-012: uma transação que remove uma linha ou desativa um Super Administrador trava as
-  linhas (`SELECT … FOR UPDATE OF super_admin, user_account`) e recusa a operação se não
-  sobrar nenhum ativo. A política de UPDATE existe só para permitir o travamento
-  (migração 0003).
-- RF-028: *trigger* recusa inserir aqui quem tem vínculo `active` ou `pending`, e recusa
-  inserir vínculo para quem está aqui.
+- RF-012: a transaction that removes a row or disables a Super Administrator locks the
+  rows (`SELECT … FOR UPDATE OF super_admin, user_account`) and rejects the operation if
+  no active one would remain. The UPDATE policy exists only to allow the lock
+  (migration 0003).
+- RF-028: a *trigger* rejects inserting here anyone with an `active` or `pending`
+  membership, and rejects inserting a membership for anyone who is here.
 
 ### `membership`
 
-Vínculo de uma pessoa com uma organização (RF-019).
+A person's membership in an organization (RF-019).
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
 | `id` | uuid | PK |
 | `organization_id` | uuid | FK; **RLS** |
-| `user_id` | uuid | FK; único com `organization_id` |
+| `user_id` | uuid | FK; unique with `organization_id` |
 | `profile` | enum `administrator`, `agent_designer`, `business_analyst`, `supervisor`, `developer`, `financial_admin` | RF-013 |
-| `status` | enum `pending`, `active`, `disabled`, `removed` | `pending` até o primeiro login após o convite; `disabled` na desativação por organização (plano, seção 4.4) |
-| `version` | integer | trava otimista |
+| `status` | enum `pending`, `active`, `disabled`, `removed` | `pending` until the first login after the invitation; `disabled` on per-organization deactivation (plan, section 4.4) |
+| `version` | integer | optimistic lock |
 | `created_at`, `created_by`, `updated_at` | | |
 
 ### `invitation`
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
 | `id` | uuid | PK |
 | `organization_id` | uuid | FK; **RLS** |
 | `email` | citext | |
-| `profile` | enum (igual a `membership.profile`) | |
-| `token_hash` | bytea | SHA-256 de token aleatório de 256 bits; usado só para pessoas já cadastradas |
-| `expires_at` | timestamptz | padrão: 72 h |
+| `profile` | enum (same as `membership.profile`) | |
+| `token_hash` | bytea | SHA-256 of a random 256-bit token; used only for already registered people |
+| `expires_at` | timestamptz | default: 72 h |
 | `status` | enum `pending`, `accepted`, `expired`, `revoked` | |
 | `invited_by`, `created_at`, `accepted_at` | | |
 
 ### `email_change_request`
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
 | `id` | uuid | PK |
 | `user_id` | uuid | FK |
 | `new_email` | citext | |
-| `token_hash` | bytea | SHA-256 de token aleatório de 256 bits |
-| `expires_at` | timestamptz | padrão: 24 h |
+| `token_hash` | bytea | SHA-256 of a random 256-bit token |
+| `expires_at` | timestamptz | default: 24 h |
 | `status` | enum `pending`, `confirmed`, `expired`, `revoked` | |
 | `requested_by`, `created_at`, `confirmed_at` | | |
 
-### RLS (Princípio IV)
+### RLS (Principle IV)
 
-- Cada transação define `app.user_id`, `app.organization_id` (organização ativa) e
-  `app.is_super_admin`; a função `identity.is_super_admin()` só é verdadeira se a pessoa
-  também está em `super_admin`.
-- Nenhum papel ignora o RLS. As políticas do Super Administrador são específicas:
+- Each transaction sets `app.user_id`, `app.organization_id` (active organization) and
+  `app.is_super_admin`; the `identity.is_super_admin()` function is true only if the
+  person is also in `super_admin`.
+- No role bypasses RLS. The Super Administrator policies are specific:
 
-| Tabela | Membro da organização ativa | Super Administrador |
+| Table | Member of the active organization | Super Administrator |
 |---|---|---|
-| `organization` | as suas organizações | todas (ler, criar, alterar) |
-| `membership` | os da organização ativa e os próprios | só `profile = 'administrator'` |
-| `invitation` | os da organização ativa | só `profile = 'administrator'` |
-| `user_account` | a própria pessoa e quem tem vínculo com a organização ativa | a própria pessoa, quem tem vínculo de Administrador e os Super Administradores |
-| `super_admin` | só a própria linha | todas |
-| `email_change_request` | como antes | nenhuma |
+| `organization` | their own organizations | all (read, create, update) |
+| `membership` | those of the active organization and their own | only `profile = 'administrator'` |
+| `invitation` | those of the active organization | only `profile = 'administrator'` |
+| `user_account` | the person themselves and anyone with a membership in the active organization | the person themselves, anyone with an Administrator membership and the Super Administrators |
+| `super_admin` | only their own row | all |
+| `email_change_request` | as before | none |
 
-- O papel de banco da aplicação não é dono das tabelas e não tem `BYPASSRLS`.
+- The application's database role does not own the tables and does not have `BYPASSRLS`.
 
-## Schema `audit`
+## `audit` schema
 
 ### `audit_event` (append-only, §39)
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
-| `seq` | bigint | PK, sequencial; reservado pelo gravador com `nextval` antes do INSERT (um `INSERT … RETURNING` exigiria que o autor pudesse ler o evento pelas políticas de leitura) |
-| `occurred_at` | timestamptz | horário do evento na origem |
-| `recorded_at` | timestamptz | horário da gravação |
-| `organization_id` | uuid nulo | nulo para eventos da instalação (ex.: login antes de escolher organização) |
-| `installation_scope` | boolean | verdadeiro para eventos da gestão da instalação (ações do Super Administrador), inclusive os que têm `organization_id`; entra no hash |
-| `actor_user_id` | uuid nulo | quem fez |
-| `actor_kind` | enum `user`, `system`, `support` | `support` = ação do fornecedor via ferramenta de operação (ex.: reemissão de link) |
-| `event_type` | text | catálogo em [contracts/audit-events.md](contracts/audit-events.md) |
-| `target_type`, `target_id` | text, text | alvo da ação |
+| `seq` | bigint | PK, sequential; reserved by the writer with `nextval` before the INSERT (an `INSERT … RETURNING` would require the actor to be able to read the event under the read policies) |
+| `occurred_at` | timestamptz | event time at the source |
+| `recorded_at` | timestamptz | time of recording |
+| `organization_id` | nullable uuid | null for installation events (e.g. login before choosing an organization) |
+| `installation_scope` | boolean | true for installation management events (Super Administrator actions), including those with an `organization_id`; part of the hash |
+| `actor_user_id` | nullable uuid | who did it |
+| `actor_kind` | enum `user`, `system`, `support` | `support` = vendor action via the operations tool (e.g. link reissue) |
+| `event_type` | text | catalog in [contracts/audit-events.md](contracts/audit-events.md) |
+| `target_type`, `target_id` | text, text | target of the action |
 | `result` | enum `success`, `failure`, `denied` | |
-| `details` | jsonb | **nunca** contém senha, código, token, link, IP ou e-mail |
+| `details` | jsonb | **never** contains a password, code, token, link, IP or e-mail |
 | `source` | enum `control_plane`, `keycloak` | |
-| `source_event_id` | text | id do evento no Keycloak; único com `source`, evita duplicar na importação |
-| `prev_hash`, `hash` | bytea | `hash = SHA-256(prev_hash ‖ JSON canônico do registro)` |
+| `source_event_id` | text | event id in Keycloak; unique with `source`, prevents duplicates on import |
+| `prev_hash`, `hash` | bytea | `hash = SHA-256(prev_hash ‖ canonical JSON of the record)` |
 
-- O papel da aplicação tem apenas `INSERT` e `SELECT`; um *trigger* também recusa
-  `UPDATE`, `DELETE` e `TRUNCATE` para qualquer papel. A recusa desfaz a própria
-  transação, então a tentativa é registrada no **log do PostgreSQL**, coletado pela
-  observabilidade, que gera alerta e o evento `audit.tamper_attempt` em transação
-  separada (US6, cenário 3).
-- A gravação é serializada travando a linha única de `audit.chain_head` (`FOR UPDATE`),
-  que guarda a posição e o hash do último registro. A ponta fica fora do RLS (não tem
-  dado de cliente), então o gravador obtém o hash anterior mesmo quando o último
-  registro é de outra organização.
-- Verificação de integridade: rotina que recalcula a cadeia e alerta em divergência.
-- Pedido de esquecimento: o evento não é alterado; os dados pessoais ficam em
-  `user_account`, que é anonimizado. O `actor_user_id` continua apontando para um
-  registro sem nome nem e-mail.
+- The application role has only `INSERT` and `SELECT`; a *trigger* also rejects
+  `UPDATE`, `DELETE` and `TRUNCATE` for any role. The rejection rolls back its own
+  transaction, so the attempt is recorded in the **PostgreSQL log**, collected by the
+  observability stack, which raises an alert and the `audit.tamper_attempt` event in a
+  separate transaction (US6, scenario 3).
+- Writes are serialized by locking the single row of `audit.chain_head` (`FOR UPDATE`),
+  which stores the position and hash of the last record. The head is outside RLS (it has
+  no customer data), so the writer gets the previous hash even when the last record
+  belongs to another organization.
+- Integrity check: a routine that recomputes the chain and alerts on mismatch.
+- Right-to-be-forgotten request: the event is not changed; personal data lives in
+  `user_account`, which is anonymized. `actor_user_id` keeps pointing to a record with no
+  name or e-mail.
 
-### Quem lê o Audit Trail (US6, cenário 2)
+### Who reads the Audit Trail (US6, scenario 2)
 
-| Quem | Vê |
+| Who | Sees |
 |---|---|
-| Administrador | eventos da organização ativa (inclusive as ações do Super Administrador sobre ela) e eventos sem organização, fora da gestão da instalação, feitos por pessoas com vínculo não removido com a organização (logins e falhas vindos do Keycloak; migração 0005) |
-| Super Administrador | eventos com `installation_scope` e eventos feitos por Super Administradores (migração 0004) |
+| Administrator | events of the active organization (including Super Administrator actions on it) and events with no organization, outside installation management, performed by people with a non-removed membership in the organization (logins and failures coming from Keycloak; migration 0005) |
+| Super Administrator | events with `installation_scope` and events performed by Super Administrators (migration 0004) |
 
-A origem (`audit_event_origin`) segue a visibilidade do evento.
+The origin (`audit_event_origin`) follows the event's visibility.
 
 ### `audit_event_origin`
 
-Origem da conexão de cada evento ("de onde", RF-022). Fica **fora da cadeia de hash**
-porque é dado pessoal com retenção limitada (LGPD).
+Connection origin of each event ("from where", RF-022). It is kept **outside the hash
+chain** because it is personal data with limited retention (LGPD).
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
 | `seq` | bigint | PK, FK `audit_event` |
 | `source_ip` | inet | |
 | `user_agent` | text | |
 
-- Expurgo diário no `cap-worker` remove linhas com mais de 12 meses
-  (`audit_origin_retention_days`, padrão 365) e grava um evento `audit.origin_purged`
-  com o intervalo expurgado. A cadeia de `audit_event`
-  continua verificável.
+- A daily purge in `cap-worker` removes rows older than 12 months
+  (`audit_origin_retention_days`, default 365) and records an `audit.origin_purged` event
+  with the purged range. The `audit_event` chain remains verifiable.
 
 ### `chain_head`
 
-Linha única com a ponta da cadeia (`last_seq`, `last_hash`). Inicia com o hash gênese (32
-bytes zero). O papel da aplicação só lê e atualiza.
+Single row with the head of the chain (`last_seq`, `last_hash`). Starts with the genesis
+hash (32 zero bytes). The application role can only read and update it.
 
 ### `keycloak_event_cursor`
 
-Linha única com o instante do último evento importado (`last_time`, em milissegundos) e os
-ids já importados naquele instante (`last_ids`), porque vários eventos podem ter o mesmo
-horário. Usado pelo worker da research R4.
+Single row with the timestamp of the last imported event (`last_time`, in milliseconds)
+and the ids already imported at that timestamp (`last_ids`), because several events can
+share the same time. Used by the research R4 worker.
 
-## Sessões (Valkey)
+## Sessions (Valkey)
 
-| Chave | Conteúdo | TTL |
+| Key | Content | TTL |
 |---|---|---|
-| `cap:sess:{sid}` | `user_id`, `keycloak_sid`, `active_organization_id`, `csrf_token_hash`, tokens do Keycloak **cifrados**, `created_at`, `last_seen_at` | renovado a cada requisição até 30 min de inatividade; nunca passa de 12 h desde `created_at` |
-| `cap:user-sess:{user_id}` | conjunto de `sid` do usuário | usado para encerrar todas as sessões de um usuário |
+| `cap:sess:{sid}` | `user_id`, `keycloak_sid`, `active_organization_id`, `csrf_token_hash`, **encrypted** Keycloak tokens, `created_at`, `last_seen_at` | renewed on every request up to 30 min of inactivity; never exceeds 12 h since `created_at` |
+| `cap:user-sess:{user_id}` | set of the user's `sid`s | used to end all of a user's sessions |
 
-- `sid`: 256 bits aleatórios; o cookie leva o `sid`, a chave no Valkey usa o SHA-256 dele.
-- Sessões pertencem à pessoa, não a uma organização; a organização ativa é um atributo
-  da sessão e é revalidada contra `membership` a cada requisição.
+- `sid`: 256 random bits; the cookie carries the `sid`, the Valkey key uses its SHA-256.
+- Sessions belong to the person, not to an organization; the active organization is a
+  session attribute and is revalidated against `membership` on every request.
 
-## Transições de estado
+## State transitions
 
 ```text
-organization.status:   pending ──(1º Administrador ativo)──▶ active ◀──(reativar)── suspended
-                          │                                  └───(suspender)───▶ suspended
-                          └──(cancelar)──▶ cancelled
-user_account.status:   invited ──(1º login)──▶ active ◀──(reativar)── disabled
-                                                  └────(desativar)─────▶ disabled
-membership.status:     pending ──(1º login / aceite)──▶ active ◀──(reativar)── disabled
-                                                          ├──(desativar)──▶ disabled
-                                                          └──(remover)────▶ removed
+organization.status:   pending ──(1st Administrator active)──▶ active ◀──(reactivate)── suspended
+                          │                                    └────(suspend)────▶ suspended
+                          └──(cancel)──▶ cancelled
+user_account.status:   invited ──(1st login)──▶ active ◀──(reactivate)── disabled
+                                                   └─────(disable)─────▶ disabled
+membership.status:     pending ──(1st login / acceptance)──▶ active ◀──(reactivate)── disabled
+                                                               ├──(disable)──▶ disabled
+                                                               └──(remove)───▶ removed
 invitation.status:     pending ──▶ accepted | expired | revoked
 email_change_request:  pending ──▶ confirmed | expired | revoked
 ```
