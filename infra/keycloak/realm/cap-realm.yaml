@@ -1,0 +1,193 @@
+# Realm da instalação, aplicado de forma idempotente pelo keycloak-config-cli
+# (specs/001-identity-access, plano §4.9; research R6).
+# Variáveis de ambiente (sintaxe do keycloak-config-cli) vêm do compose local (.env) ou do
+# provisionamento (OpenBao). Atenção: a substituição vale até dentro de comentários.
+realm: cap
+enabled: true
+displayName: SecureLogin
+loginTheme: cap
+emailTheme: cap
+internationalizationEnabled: true
+supportedLocales: [pt-BR]
+defaultLocale: pt-BR
+
+# Login direto por e-mail; sem autocadastro (RF-001, RF-009).
+registrationAllowed: false
+registrationEmailAsUsername: true
+loginWithEmailAllowed: true
+duplicateEmailsAllowed: false
+editUsernameAllowed: false
+resetPasswordAllowed: true
+rememberMe: false
+verifyEmail: false
+sslRequired: external
+
+# Bloqueio temporário de 15 min após 5 falhas de senha ou de código (RF-003, research R1).
+bruteForceProtected: true
+permanentLockout: false
+failureFactor: 5
+waitIncrementSeconds: 900
+maxFailureWaitSeconds: 900
+maxDeltaTimeSeconds: 43200
+minimumQuickLoginWaitSeconds: 60
+quickLoginCheckMilliSeconds: 1000
+
+# Política de senha (RF-007, research R5).
+passwordPolicy: "length(12) and maxLength(128) and passwordBlacklist(pwdb-top-1000000.txt) and passwordHistory(5) and notEmail and notUsername"
+
+# Sessão: inatividade de 30 min, máximo de 12 h (RF-006).
+ssoSessionIdleTimeout: 1800
+ssoSessionMaxLifespan: 43200
+accessTokenLifespan: 300
+# Links por e-mail: convite e boas-vindas 72 h; recuperação de senha 30 min (RF-004, RF-010).
+actionTokenGeneratedByAdminLifespan: 259200
+actionTokenGeneratedByUserLifespan: 1800
+
+# Eventos para o Audit Trail, guardados por 7 dias (research R4).
+eventsEnabled: true
+eventsExpiration: 604800
+enabledEventTypes:
+  - LOGIN
+  - LOGIN_ERROR
+  - LOGOUT
+  - LOGOUT_ERROR
+  - CODE_TO_TOKEN
+  - UPDATE_PASSWORD
+  - UPDATE_CREDENTIAL
+  - RESET_PASSWORD
+  - RESET_PASSWORD_ERROR
+  - SEND_RESET_PASSWORD
+  - SEND_RESET_PASSWORD_ERROR
+  - EXECUTE_ACTIONS
+  - EXECUTE_ACTION_TOKEN
+  - EXECUTE_ACTION_TOKEN_ERROR
+  - USER_DISABLED_BY_TEMPORARY_LOCKOUT
+adminEventsEnabled: true
+# Representações completas podem conter dados pessoais; o Control Plane já audita as mudanças.
+adminEventsDetailsEnabled: false
+
+smtpServer:
+  host: $(env:KC_SMTP_HOST)
+  port: $(env:KC_SMTP_PORT)
+  from: $(env:KC_SMTP_FROM)
+  fromDisplayName: SecureLogin
+  auth: $(env:KC_SMTP_AUTH:-false)
+  user: $(env:KC_SMTP_USER:-)
+  password: $(env:KC_SMTP_PASSWORD:-)
+  starttls: $(env:KC_SMTP_STARTTLS:-false)
+  ssl: $(env:KC_SMTP_SSL:-false)
+
+# Fluxo de navegador: senha seguida de código por e-mail, ambos obrigatórios (RF-001).
+browserFlow: cap-browser
+authenticationFlows:
+  - alias: cap-browser
+    description: Login com e-mail e senha seguido de código enviado ao e-mail
+    providerId: basic-flow
+    topLevel: true
+    builtIn: false
+    authenticationExecutions:
+      - authenticator: auth-cookie
+        requirement: ALTERNATIVE
+        priority: 10
+        authenticatorFlow: false
+      - flowAlias: cap-browser-forms
+        requirement: ALTERNATIVE
+        priority: 20
+        authenticatorFlow: true
+  - alias: cap-browser-forms
+    description: Senha e código por e-mail
+    providerId: basic-flow
+    topLevel: false
+    builtIn: false
+    authenticationExecutions:
+      - authenticator: auth-username-password-form
+        requirement: REQUIRED
+        priority: 10
+        authenticatorFlow: false
+      - authenticator: email-authenticator
+        authenticatorConfig: cap-email-code
+        requirement: REQUIRED
+        priority: 20
+        authenticatorFlow: false
+
+authenticatorConfig:
+  - alias: cap-email-code
+    config:
+      # Padrões da spec (seção 8): 6 dígitos, 10 min, até 3 reenvios a cada 15 min.
+      length: "6"
+      ttl: "600"
+      resendCooldown: "300"
+      maxAttempts: "5"
+      emailProviderType: KEYCLOAK
+      enableFallback: "false"
+      # Todo usuário com e-mail recebe o código, sem etapa de cadastro do segundo fator.
+      skipSetup: "true"
+      showMaskedEmailOnOtpForm: "true"
+      # Nunca ligar: escreve o código no log (research R1).
+      simulationMode: "false"
+
+# Nome e demais dados do usuário ficam no Control Plane (research R2); o Keycloak só
+# precisa do e-mail. Sem isso, o perfil padrão exige nome e sobrenome após o login.
+requiredActions:
+  - alias: VERIFY_PROFILE
+    name: Verify Profile
+    providerId: VERIFY_PROFILE
+    enabled: false
+    defaultAction: false
+
+clients:
+  # BFF do Control Plane (research R3): Authorization Code + PKCE, back-channel logout.
+  - clientId: cap-control-plane
+    name: SecureLogin
+    enabled: true
+    protocol: openid-connect
+    publicClient: false
+    clientAuthenticatorType: client-secret
+    secret: $(env:KC_CLIENT_SECRET_CONTROL_PLANE)
+    standardFlowEnabled: true
+    implicitFlowEnabled: false
+    directAccessGrantsEnabled: false
+    serviceAccountsEnabled: false
+    frontchannelLogout: false
+    redirectUris:
+      - $(env:CAP_PUBLIC_URL)/api/v1/auth/callback
+      # Retorno dos links de ativação e convite (execute-actions): a página inicial do Studio,
+      # que então inicia o login normal com senha e código (US2).
+      - $(env:CAP_PUBLIC_URL)/
+    webOrigins: []
+    attributes:
+      pkce.code.challenge.method: S256
+      post.logout.redirect.uris: $(env:CAP_PUBLIC_URL)/
+      backchannel.logout.url: $(env:CAP_BACKCHANNEL_LOGOUT_URL)
+      backchannel.logout.session.required: "true"
+      backchannel.logout.revoke.offline.tokens: "true"
+
+  # Conta de serviço do Control Plane para a Admin REST API (papéis mínimos).
+  - clientId: cap-admin-bridge
+    name: Control Plane (administração)
+    enabled: true
+    protocol: openid-connect
+    publicClient: false
+    clientAuthenticatorType: client-secret
+    secret: $(env:KC_CLIENT_SECRET_ADMIN_BRIDGE)
+    standardFlowEnabled: false
+    implicitFlowEnabled: false
+    directAccessGrantsEnabled: false
+    serviceAccountsEnabled: true
+
+  # O usuário gerencia senha e sessões pelo SecureLogin; o console de conta fica desligado.
+  - clientId: account-console
+    enabled: false
+
+users:
+  - username: service-account-cap-admin-bridge
+    enabled: true
+    serviceAccountClientId: cap-admin-bridge
+    clientRoles:
+      realm-management:
+        - view-users
+        - manage-users
+        - view-events
+        - view-realm
+        # Necessário para a tela de configuração de segurança (RF-007).
+        - manage-realm

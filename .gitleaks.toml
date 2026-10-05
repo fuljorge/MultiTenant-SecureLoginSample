@@ -1,0 +1,16 @@
+# Varredura de segredos (constituição, Princípio X). Usa as regras padrão do gitleaks.
+title = "MultiTenant SecureLogin Sample"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Arquivos sem segredos reais"
+paths = [
+  '''pnpm-lock\.yaml''',
+  '''uv\.lock''',
+  # Testes que verificam a detecção e o mascaramento de segredos: usam valores falsos
+  # (JWT e senhas de exemplo) de propósito. Nenhum outro arquivo de teste entra aqui.
+  '''services/control-plane/tests/unit/core/test_logging\.py''',
+  '''services/control-plane/tests/unit/test_scan_logs_for_secrets\.py''',
+]

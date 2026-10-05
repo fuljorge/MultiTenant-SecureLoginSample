@@ -1,0 +1,23 @@
+# Instalação: `uvx pre-commit install` (uma vez por clone).
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        types_or: [python, pyi]
+      - id: ruff-format
+        types_or: [python, pyi]
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier
+        # Node direto: via corepack/cmd.exe, caminhos com parênteses como src/app/(app)/
+        # quebram no Windows.
+        entry: node node_modules/prettier/bin/prettier.cjs --check --ignore-unknown
+        language: system
+        types_or: [javascript, jsx, ts, tsx, json, yaml, css]

@@ -1,0 +1,16 @@
+# Gerados ou de terceiros
+pnpm-lock.yaml
+uv.lock
+.venv/
+**/.next/
+**/node_modules/
+packages/api-client/src/generated/
+packages/api-client/openapi.json
+# Documentos de produto e specs são editados à mão; não reformatar em massa
+docs/
+specs/
+memory/
+marketing/
+*.md
+# Python é formatado pelo Ruff
+**/*.py

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SecureLogin">
+  <path d="M32 4 8 13v17c0 15 10.2 27.3 24 30 13.8-2.7 24-15 24-30V13L32 4Z" fill="#3b82f6"/>
+  <circle cx="32" cy="28" r="7" fill="#0b1220"/>
+  <path d="M29 33h6l2 13h-10l2-13Z" fill="#0b1220"/>
+</svg>

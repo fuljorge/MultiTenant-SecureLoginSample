@@ -1,0 +1,71 @@
+[project]
+name = "cap-control-plane"
+version = "0.1.0"
+description = "SecureLogin — Control Plane API (identidade multi-tenant)"
+requires-python = ">=3.12"
+license = { text = "LicenseRef-Reference-Only" }  # ver LICENSE na raiz
+dependencies = [
+    "fastapi>=0.142",
+    "uvicorn[standard]>=0.54",
+    "pydantic>=2.13",
+    "email-validator>=2.2",
+    "pydantic-settings>=2.6",
+    "sqlalchemy>=2.1",
+    "alembic>=1.20",
+    "psycopg[binary]>=3.3",
+    "authlib>=1.8",
+    "joserfc>=1.7",
+    "httpx>=0.28",
+    "redis>=8.1",
+    "opentelemetry-sdk>=1.45",
+    "opentelemetry-instrumentation-fastapi",
+]
+
+[project.scripts]
+cap-admin = "cap_control_plane.cli.cap_admin:main"
+cap-worker = "cap_control_plane.worker:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "pytest-asyncio>=1.4",
+    "testcontainers>=4.15",
+    "ruff>=0.16",
+    "mypy>=2.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cap_control_plane"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/F/W: erros básicos; I: imports; UP: sintaxe moderna; B: bugs comuns;
+# S: regras de segurança do Bandit (constituição, Princípio X); ASYNC; RUF.
+select = ["E", "F", "W", "I", "UP", "B", "S", "ASYNC", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# assert é o idioma do pytest; valores fictícios de segredo são comuns em testes
+# (o gitleaks continua varrendo tudo).
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+packages = ["cap_control_plane"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+markers = [
+    "integration: requer Docker (Testcontainers)",
+]

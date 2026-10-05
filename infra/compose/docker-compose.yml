@@ -1,0 +1,145 @@
+# Ambiente local da plataforma (specs/001-identity-access, plano §4.10).
+# Credenciais vêm de infra/compose/.env (não versionado). Gere com:
+#   uv run python infra/compose/init_env.py
+name: secure-login
+
+services:
+  postgres:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?gere o .env com init_env.py}
+      CAP_DB_PASSWORD: ${CAP_DB_PASSWORD:?}
+      CAP_MIGRATOR_PASSWORD: ${CAP_MIGRATOR_PASSWORD:?}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/01-databases.sh:/docker-entrypoint-initdb.d/01-databases.sh:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  valkey:
+    image: valkey/valkey:9.1-alpine
+    command: ["valkey-server", "--appendonly", "yes", "--requirepass", "${VALKEY_PASSWORD:?}"]
+    volumes:
+      - valkey-data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", 'valkey-cli -a "$$VALKEY_PASSWORD" --no-auth-warning ping | grep PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?}
+
+  # Modo dev: em memória, sem selagem. Apenas para desenvolvimento local.
+  openbao:
+    image: openbao/openbao:2.7.1
+    command: ["server", "-dev", "-dev-listen-address=0.0.0.0:8200"]
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_DEV_ROOT_TOKEN:?}
+    ports:
+      - "127.0.0.1:8200:8200"
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test: ["CMD-SHELL", "BAO_ADDR=http://127.0.0.1:8200 bao status"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Habilita o Transit e cria a chave usada para cifrar tokens de sessão (plano §3, R3).
+  openbao-init:
+    image: openbao/openbao:2.7.1
+    depends_on:
+      openbao:
+        condition: service_healthy
+    environment:
+      BAO_ADDR: http://openbao:8200
+      BAO_TOKEN: ${OPENBAO_DEV_ROOT_TOKEN:?}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        (bao secrets list | grep -q '^transit/' || bao secrets enable transit) &&
+        (bao read transit/keys/cap-session >/dev/null 2>&1 || bao write -f transit/keys/cap-session type=aes256-gcm96)
+    restart: "no"
+
+  # Imagem própria com a extensão de código por e-mail e o tema cap (infra/keycloak).
+  keycloak:
+    build:
+      context: ../keycloak
+    command: ["start", "--optimized"]
+    environment:
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?}
+      KC_HOSTNAME: http://localhost:8080/idp
+      KC_HTTP_ENABLED: "true"
+      # Administrador temporário do realm master, usado só pelo keycloak-config-cli.
+      KC_BOOTSTRAP_ADMIN_USERNAME: bootstrap-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD:?}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /idp/health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q UP <&3",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Aplica infra/keycloak/realm/*.yaml de forma idempotente (research R6).
+  keycloak-config:
+    image: adorsys/keycloak-config-cli:6.5.1-26.5.5@sha256:0955d98c8a341898b7aa177477edf8a1e90569ae50bbe7598141c1270b773274
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    volumes:
+      - ../keycloak/realm:/config:ro
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080/idp
+      KEYCLOAK_USER: bootstrap-admin
+      KEYCLOAK_PASSWORD: ${KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD:?}
+      KEYCLOAK_AVAILABILITYCHECK_ENABLED: "true"
+      IMPORT_FILES_LOCATIONS: /config/*.yaml
+      IMPORT_VARSUBSTITUTION_ENABLED: "true"
+      KC_SMTP_HOST: mailpit
+      KC_SMTP_PORT: "1025"
+      KC_SMTP_FROM: nao-responda@agent-studio.local
+      KC_CLIENT_SECRET_CONTROL_PLANE: ${KC_CLIENT_SECRET_CONTROL_PLANE:?}
+      KC_CLIENT_SECRET_ADMIN_BRIDGE: ${KC_CLIENT_SECRET_ADMIN_BRIDGE:?}
+      CAP_PUBLIC_URL: http://localhost:3000
+      # O Control Plane roda no host durante o desenvolvimento.
+      CAP_BACKCHANNEL_LOGOUT_URL: http://host.docker.internal:8000/api/v1/auth/backchannel-logout
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: "no"
+
+  # Captura todos os e-mails (código do segundo fator, convites, avisos).
+  mailpit:
+    image: axllent/mailpit:v1.31.3
+    ports:
+      - "127.0.0.1:8025:8025" # interface web e API
+      - "127.0.0.1:1025:1025" # SMTP
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:
+  valkey-data:

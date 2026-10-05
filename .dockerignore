@@ -1,0 +1,16 @@
+# Contexto de build das imagens (T073): nada de segredos locais nem artefatos.
+.git
+**/.venv
+**/node_modules
+**/.next
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/test-results
+**/playwright-report
+infra/compose/.env*
+**/.env*
+DevNotes.MD
+marketing
+docs

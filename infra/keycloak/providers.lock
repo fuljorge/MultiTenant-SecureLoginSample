@@ -1,0 +1,33 @@
+# Artefatos de terceiros embutidos na imagem do Keycloak (constituição, Princípios X e XI).
+# Toda mudança aqui exige atualizar o Dockerfile e registrar a verificação em
+# specs/001-identity-access/research.md (R1, R5).
+
+keycloak:
+  image: quay.io/keycloak/keycloak:26.7.5
+  digest: sha256:37dbaf6f0722c9ec246335f36e1ef8b2e6cb960f7c27e0d8c615121a3d475a85
+  note: >-
+    Série 26.7 porque a extensão de código por e-mail não tem build para 26.8.x. 2026-10-04:
+    26.7.3 -> 26.7.5 (correções de segurança em bibliotecas da distribuição apontadas pelo
+    Trivy na T073); extensão recompilada e testes do realm (T012) repetidos.
+
+providers:
+  - name: keycloak-2fa-email-authenticator
+    version: 26.5.0 + patch A15 (compilado para Keycloak 26.7.5)
+    license: Apache-2.0
+    source: https://github.com/mesutpiskin/keycloak-2fa-email-authenticator.git
+    commit: 9da56443867332eb2d491f0a60544bf3c0c96d9d # tag v26.5.0
+    patches:
+      # Remover quando o PR upstream for publicado numa versão:
+      # https://github.com/mesutpiskin/keycloak-2fa-email-authenticator/pull/155 (issue #146)
+      - patches/0001-limit-email-code-attempts.patch
+    build-image: maven:3.9-eclipse-temurin-21@sha256:99e61abcff91a9b1333463bd8451fb18495d6eba9250ac66a338b518f8278320
+    verified: >-
+      2026-10-02 — código-fonte revisado na T008; patch validado com os 71 testes da
+      extensão e com os testes de integração do realm (T012).
+
+password-blacklists:
+  - name: pwdb-top-1000000.txt
+    license: MIT (SecLists)
+    source: https://raw.githubusercontent.com/danielmiessler/SecLists/15afcb8bac144abbec11d31ec3be394169b38bb1/Passwords/Common-Credentials/Pwdb_top-1000000.txt
+    sha256: e9a88f67aafe65496682dc374559ee714e978bee50314767494c3e37a18c9fc8
+    entries: 1000000

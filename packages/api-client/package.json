@@ -1,0 +1,25 @@
+{
+  "name": "@cap/api-client",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "openapi": "cd ../../services/control-plane && uv run python -m cap_control_plane.openapi ../../packages/api-client/openapi.json",
+    "generate": "orval --config orval.config.ts && prettier --write src/generated",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5",
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@tanstack/react-query": "^5",
+    "@types/react": "^19.3.0",
+    "orval": "^8.39.0",
+    "prettier": "^3.9.9",
+    "react": "19.2.8",
+    "typescript": "^5"
+  }
+}

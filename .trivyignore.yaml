@@ -1,0 +1,12 @@
+# Mitigações registradas de vulnerabilidades altas ou críticas (constituição, Princípio X;
+# specs/001-identity-access, T073). Toda entrada precisa de justificativa, caminho e data de
+# validade; vencida a data, o CI volta a falhar e a entrada é revista.
+vulnerabilities:
+  - id: CVE-2025-59250
+    paths:
+      - "opt/keycloak/lib/lib/main/com.microsoft.sqlserver.mssql-jdbc-13.2.1.jre11.jar"
+    statement: >-
+      Driver JDBC do SQL Server da distribuição do Keycloak 26.7.5. O Keycloak usa só o
+      PostgreSQL (KC_DB=postgres), então o driver nunca é carregado. A versão instalada
+      (13.2.1.jre11) é a corrigida; o Trivy compara sem o sufixo e acusa falso positivo.
+    expired_at: 2027-01-31

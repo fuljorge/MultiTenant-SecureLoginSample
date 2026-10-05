@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "tests/e2e"
+
+# Pacotes autorizados a rodar scripts de instalação (pnpm bloqueia por padrão).
+allowBuilds:
+  esbuild: false
+  sharp: false
+  unrs-resolver: false

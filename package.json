@@ -1,0 +1,19 @@
+{
+  "name": "multitenant-securelogin-sample",
+  "private": true,
+  "packageManager": "pnpm@12.8.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r --filter=!e2e test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "e2e": "pnpm --filter e2e test"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.9"
+  }
+}

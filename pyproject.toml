@@ -1,0 +1,3 @@
+# Workspace uv (Python). Cada serviço tem o próprio pyproject.toml.
+[tool.uv.workspace]
+members = ["services/*"]

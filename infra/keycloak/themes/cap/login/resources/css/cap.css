@@ -1,0 +1,115 @@
+/*
+ * Identidade visual nas telas de login, igual à do Studio (apps/studio/src/styles/tokens.css);
+ * o Keycloak não enxerga os tokens do Studio,
+ * por isso eles são declarados aqui uma única vez e usados só por variável.
+ */
+:root {
+  --cap-bg: #0b1220;
+  --cap-bg-elevated: #111827;
+  --cap-surface: #1a2232;
+  --cap-border: #273244;
+  --cap-text: #e5e7eb;
+  --cap-text-muted: #9ca3af;
+  --cap-accent: #3b82f6;
+  --cap-accent-strong: #60a5fa;
+  --cap-accent-border: rgba(59, 130, 246, 0.5);
+  --cap-font: "Segoe UI", system-ui, Roboto, sans-serif;
+
+  /* PatternFly (base do tema keycloak.v2) */
+  --pf-v5-global--BackgroundColor--100: var(--cap-surface);
+  --pf-v5-global--BackgroundColor--200: var(--cap-bg-elevated);
+  --pf-v5-global--Color--100: var(--cap-text);
+  --pf-v5-global--Color--200: var(--cap-text-muted);
+  --pf-v5-global--BorderColor--100: var(--cap-border);
+  --pf-v5-global--primary-color--100: var(--cap-accent);
+  --pf-v5-global--primary-color--200: var(--cap-accent-strong);
+  --pf-v5-global--link--Color: var(--cap-accent);
+  /* Cor "ativa" (foco, faixa do cabeçalho); o padrão do PatternFly é azul. */
+  --pf-v5-global--active-color--100: var(--cap-accent);
+  --pf-v5-global--link--Color--hover: var(--cap-accent-strong);
+  --pf-v5-global--FontFamily--text: var(--cap-font);
+  --pf-v5-global--FontFamily--heading: var(--cap-font);
+  color-scheme: dark;
+}
+
+body,
+.pf-v5-c-login {
+  background: var(--cap-bg);
+  color: var(--cap-text);
+  font-family: var(--cap-font);
+}
+
+.pf-v5-c-login__main {
+  background: var(--cap-surface);
+  border: 1px solid var(--cap-border);
+  /* Raio padrão dos cartões. */
+  border-radius: 8px;
+}
+
+.pf-v5-c-login__main-header {
+  border-top-color: var(--cap-accent);
+}
+
+.pf-v5-c-form-control {
+  /* Variáveis do componente: o PatternFly fixa azul (#06c) aqui, fora do escopo global. */
+  --pf-v5-c-form-control--after--BorderBottomColor: var(--cap-border);
+  --pf-v5-c-form-control--hover--after--BorderBottomColor: var(--cap-accent);
+  --pf-v5-c-form-control--focus--after--BorderBottomColor: var(--cap-accent);
+  background: var(--cap-bg-elevated);
+  color: var(--cap-text);
+}
+
+.pf-v5-c-button.pf-m-primary {
+  background: var(--cap-accent);
+  color: var(--cap-bg);
+}
+
+.pf-v5-c-button.pf-m-primary:hover {
+  background: var(--cap-accent-strong);
+}
+
+:focus-visible {
+  outline: 2px solid var(--cap-accent-border);
+}
+
+#kc-header-wrapper {
+  background: url("../img/logo.svg") no-repeat center top / auto 48px;
+  padding-top: 64px;
+  color: var(--cap-text);
+}
+
+/* Indicador de força da senha (RF-032). Um só acento: a força aparece no tamanho da barra. */
+.cap-strength {
+  margin-top: 0.5rem;
+}
+.cap-strength__bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--cap-border);
+  overflow: hidden;
+}
+.cap-strength__bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--cap-accent);
+  transition: width 0.15s ease;
+}
+.cap-strength[data-level="1"] .cap-strength__bar span {
+  width: 25%;
+  background: var(--cap-text-muted);
+}
+.cap-strength[data-level="2"] .cap-strength__bar span {
+  width: 50%;
+}
+.cap-strength[data-level="3"] .cap-strength__bar span {
+  width: 75%;
+}
+.cap-strength[data-level="4"] .cap-strength__bar span {
+  width: 100%;
+}
+.cap-strength__text {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--cap-text-muted);
+}

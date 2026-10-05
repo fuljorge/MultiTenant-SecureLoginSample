@@ -1,0 +1,32 @@
+/*
+ * Tokens visuais da aplicação: tema escuro com um único acento.
+ *
+ * Os tokens têm o prefixo `--brand-` porque o shadcn/ui usa
+ * `--accent`, `--border` etc. com outro significado. Equivalência:
+ *   --brand-bg = --bg, --brand-accent = --accent, e assim por diante.
+ * Componentes usam as variáveis semânticas do shadcn (globals.css), que
+ * apontam para estes tokens. Não use hex soltos fora deste arquivo.
+ */
+:root {
+  --brand-bg: #0b1220;
+  --brand-bg-elevated: #111827;
+  --brand-surface: #1a2232;
+  --brand-surface-light: #f1f5f9;
+  --brand-border: #273244;
+  --brand-text: #e5e7eb;
+  --brand-text-muted: #9ca3af;
+  --brand-white: #ffffff;
+  --brand-accent: #3b82f6;
+  --brand-accent-strong: #60a5fa;
+  --brand-accent-bg: rgba(59, 130, 246, 0.12);
+  --brand-accent-border: rgba(59, 130, 246, 0.5);
+
+  /* Cor funcional de erro/ação destrutiva (não é cor de acento da marca). */
+  --brand-danger: #e5484d;
+
+  --brand-font: "Segoe UI", system-ui, Roboto, sans-serif;
+  --brand-font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  /* Raio padrão dos cartões. */
+  --brand-corner-cut: 8px;
+}

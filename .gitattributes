@@ -1,0 +1,19 @@
+# Normaliza fim de linha para LF no repositório (equipe em Windows e Linux)
+* text=auto eol=lf
+
+# Scripts do Windows mantêm CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binários
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.pptx binary
+*.docx binary
+*.xlsx binary

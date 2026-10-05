@@ -1,0 +1,107 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "../styles/tokens.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--brand-font-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* A interface é só em tema escuro: não há tema claro. */
+:root {
+  --background: var(--brand-bg);
+  --foreground: var(--brand-text);
+  --card: var(--brand-surface);
+  --card-foreground: var(--brand-text);
+  --popover: var(--brand-bg-elevated);
+  --popover-foreground: var(--brand-text);
+  --primary: var(--brand-accent);
+  --primary-foreground: var(--brand-bg);
+  --secondary: var(--brand-surface);
+  --secondary-foreground: var(--brand-text);
+  --muted: var(--brand-bg-elevated);
+  --muted-foreground: var(--brand-text-muted);
+  --accent: var(--brand-accent-bg);
+  --accent-foreground: var(--brand-text);
+  --destructive: var(--brand-danger);
+  --border: var(--brand-border);
+  --input: var(--brand-border);
+  --ring: var(--brand-accent-border);
+  --chart-1: var(--brand-accent);
+  --chart-2: var(--brand-accent-strong);
+  --chart-3: var(--brand-text-muted);
+  --chart-4: var(--brand-border);
+  --chart-5: var(--brand-surface-light);
+  --radius: 0.25rem;
+  --sidebar: var(--brand-bg-elevated);
+  --sidebar-foreground: var(--brand-text);
+  --sidebar-primary: var(--brand-accent);
+  --sidebar-primary-foreground: var(--brand-bg);
+  --sidebar-accent: var(--brand-accent-bg);
+  --sidebar-accent-foreground: var(--brand-text);
+  --sidebar-border: var(--brand-border);
+  --sidebar-ring: var(--brand-accent-border);
+  --font-sans: var(--brand-font);
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@layer utilities {
+  /* Usar no máximo em um elemento de destaque por composição. */
+  .corner-cut {
+    border-radius: var(--brand-corner-cut);
+  }
+}

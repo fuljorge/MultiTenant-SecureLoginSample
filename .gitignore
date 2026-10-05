@@ -1,0 +1,60 @@
+# --- Segredos e ambiente ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# --- Node / TypeScript ---
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Infra ---
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl.bak
+
+# --- Configuração local de agentes e IDEs ---
+.claude/settings.local.json
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# --- Sistema operacional ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Office (arquivos temporários de lock) ---
+~$*
+
+# --- Monorepo ---
+.pnpm-store/
+playwright-report/
+test-results/
+blob-report/
+
+# --- Anotações pessoais (não versionar) ---
+DevNotes.MD
